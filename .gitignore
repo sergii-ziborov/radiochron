@@ -1,0 +1,18 @@
+# Rust build output
+/target
+
+# Runtime state (mirrors the parent project's local-first data policy)
+/data
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+Thumbs.db
+Desktop.ini
+
+# NOTE: Cargo.lock IS committed — this crate ships a binary, so we pin the
+# exact dependency graph for reproducible builds.

@@ -1,0 +1,49 @@
+[package]
+name = "beacontrail"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.78"
+description = "BeaconTrail — a local-first Windows Wi-Fi incident recorder and evidence notebook, exposed as a Model Context Protocol (MCP) server. Pure Rust: no PowerShell, no embedded C#."
+authors = ["Sergii Ziborov"]
+license = "MIT"
+repository = "https://github.com/sergii-ziborov/beacontrail"
+keywords = ["wifi", "wlan", "mcp", "windows", "diagnostics"]
+categories = ["command-line-utilities", "network-programming"]
+
+# Library holds the collectors; the binary is the MCP server (step 2) /
+# temporary CLI probe (step 1). An example proves the wlanapi FFI in isolation.
+[lib]
+name = "beacontrail"
+path = "src/lib.rs"
+
+[[bin]]
+name = "beacontrail"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+
+# Native Windows access — the whole "no C#, no PowerShell" thesis lives here.
+# windows-rs calls wlanapi.dll (and later wevtapi/iphlpapi) directly as typed FFI.
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.58"
+features = [
+    "Win32_Foundation",
+    "Win32_NetworkManagement_WiFi",
+]
+
+# --- Step 2 (MCP layer) will add, once the toolchain is confirmed and we can
+# --- compile-iterate the pre-1.0 rmcp API against a live compiler:
+#   rmcp     = { version = "0.16", features = ["server", "transport-io", "macros"] }
+#   tokio    = { version = "1", features = ["rt-multi-thread", "macros", "io-std"] }
+#   schemars = "0.8"
+#   tracing  = "0.1"
+#   tracing-subscriber = "0.3"
+# --- Persistence port (baseline_runs / events / inventory), 1:1 with node:sqlite:
+#   rusqlite = { version = "0.32", features = ["bundled"] }
+
+[profile.release]
+lto = "thin"
+strip = true
