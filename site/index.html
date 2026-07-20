@@ -107,6 +107,10 @@ nav a:hover{border-color:var(--k)}
 @keyframes trace{to{stroke-dashoffset:-400}}
 @keyframes node{50%{opacity:.3}}
 .pulse{display:block;width:100%;height:44px;margin-top:28px}
+/* When the circuit ornament is visible, the pulse keeps to the text column so
+   the two animations never share horizontal territory. 560px ends well before
+   the circuit's left edge at every viewport ≥1120px. */
+@media (min-width:1120px){.pulse{max-width:560px}}
 .pulse .base{opacity:.3}
 .pulse .sig{stroke-dasharray:80 1120;animation:trace2 4.6s linear infinite}
 @keyframes trace2{to{stroke-dashoffset:-1200}}
