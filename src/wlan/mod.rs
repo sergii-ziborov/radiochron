@@ -9,6 +9,7 @@
 use serde::Serialize;
 
 pub mod bss;
+pub mod sample;
 pub mod sys;
 
 use sys::{Dot11Ssid, Guid, WlanConnectionAttributes, WlanInterfaceInfoList};

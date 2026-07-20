@@ -164,6 +164,32 @@ fn tool_definitions() -> Value {
             }
         },
         {
+            "name": "wifi_sample",
+            "description": "Sample the current association over a bounded window and return both the \
+                            series and the aggregates a single snapshot cannot show: RSSI min/max/mean \
+                            and peak-to-trough swing, rx-rate range, distinct BSSIDs seen, roam count, \
+                            and how many samples were disconnected. Use this when the complaint is \
+                            instability (drops, stalls, slowness) rather than a current-state question. \
+                            BLOCKS for the requested duration. Read-only.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "duration_seconds": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 120,
+                        "description": "How long to sample. Default 20. Capped at 120 because the call \
+                                        blocks the JSON-RPC channel for its whole duration."
+                    },
+                    "interval_ms": {
+                        "type": "integer",
+                        "minimum": 250,
+                        "description": "Delay between readings. Default 1000, floor 250."
+                    }
+                }
+            }
+        },
+        {
             "name": "wifi_scan",
             "description": "Ask every WLAN interface to perform a fresh scan. Returns how many \
                             interfaces accepted the request. Results arrive asynchronously — read \
@@ -188,6 +214,17 @@ fn call_tool(params: &Value) -> Result<Value, RpcError> {
         "wifi_scan" => wlan::bss::request_scan()
             .and_then(|count| encode(&json!({ "interfaces_scanning": count }))),
         "wifi_networks" => collect_networks(&arguments).and_then(|v| encode(&v)),
+        "wifi_sample" => {
+            let duration = arguments
+                .get("duration_seconds")
+                .and_then(Value::as_u64)
+                .unwrap_or(20);
+            let interval = arguments
+                .get("interval_ms")
+                .and_then(Value::as_u64)
+                .unwrap_or(1000);
+            wlan::sample::sample_connection(duration, interval).and_then(|run| encode(&run))
+        }
         other => {
             return Err(RpcError {
                 code: METHOD_NOT_FOUND,
@@ -297,7 +334,12 @@ mod tests {
         let out = response(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#);
         let tools = out["result"]["tools"].as_array().unwrap();
         let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
-        assert_eq!(names, vec!["wifi_status", "wifi_networks", "wifi_scan"]);
+        // Exact, not a subset: a tool appearing here unnoticed is the failure
+        // mode this test exists to catch.
+        assert_eq!(
+            names,
+            vec!["wifi_status", "wifi_networks", "wifi_sample", "wifi_scan"]
+        );
 
         // Nothing that reads secrets or mutates the adapter may ever appear here.
         for forbidden in [
