@@ -1,0 +1,29 @@
+[package]
+name = "beacontrail-mcp"
+description = "Model Context Protocol server exposing local Wi-Fi diagnostics over stdio. Pure Rust, no SDK, three dependencies."
+keywords = ["mcp", "wifi", "wlan", "diagnostics", "model-context-protocol"]
+categories = ["command-line-utilities", "network-programming"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# The crate is beacontrail-mcp; the binary users install stays `beacontrail`.
+# A `beacontrail-mcp.exe` in a client config reads as internal plumbing.
+[[bin]]
+name = "beacontrail"
+path = "src/main.rs"
+
+[dependencies]
+beacontrail = { path = "../beacontrail", version = "0.2.0" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+
+# No MCP SDK. The stdio transport is newline-delimited JSON-RPC 2.0 with a
+# handful of methods — a few hundred lines over serde_json. The official rmcp
+# crate would add tokio, schemars and a mandatory chrono whose `clock` feature
+# depends on windows-link/raw-dylib, reintroducing the exact build requirement
+# this project exists to avoid.

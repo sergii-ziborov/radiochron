@@ -1,52 +1,30 @@
-[package]
-name = "beacontrail"
-version = "0.1.0"
+# BeaconTrail is two crates, not one, because they have different audiences.
+#
+#   beacontrail      — the library. Collectors and 802.11 analysis. What an IoT
+#                      agent, a CLI, an exporter or a WASM analyser imports.
+#   beacontrail-mcp  — the Model Context Protocol server built on it. A product,
+#                      not a library.
+#
+# They live in one repository on purpose: the server is a thin shell over the
+# library and the two move together, so separate repos would only buy manual
+# version coordination on every release.
+
+[workspace]
+resolver = "2"
+members = ["crates/beacontrail", "crates/beacontrail-mcp"]
+
+[workspace.package]
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.78"
-description = "BeaconTrail — a local-first Windows Wi-Fi incident recorder and evidence notebook, exposed as a Model Context Protocol (MCP) server. Pure Rust: no PowerShell, no embedded C#."
 authors = ["Sergii Ziborov"]
 license = "MIT"
 repository = "https://github.com/sergii-ziborov/beacontrail"
-keywords = ["wifi", "wlan", "mcp", "windows", "diagnostics"]
-categories = ["command-line-utilities", "network-programming"]
 
-# Library holds the collectors; the binary is the MCP server (step 2) /
-# temporary CLI probe (step 1). An example proves the wlanapi FFI in isolation.
-[lib]
-name = "beacontrail"
-path = "src/lib.rs"
-
-[[bin]]
-name = "beacontrail"
-path = "src/main.rs"
-
-[dependencies]
+[workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"
-
-# No MCP SDK either. The stdio transport is newline-delimited JSON-RPC 2.0 with
-# three methods that matter (initialize, tools/list, tools/call), which is a few
-# hundred lines over serde_json. The official `rmcp` crate would add tokio,
-# schemars and a mandatory `chrono` whose `clock` feature drags in
-# windows-link/raw-dylib — reintroducing the exact dlltool/MSVC build
-# requirement this project exists to avoid.
-
-# No `windows` crate on purpose. We need seven wlanapi.dll entry points and a
-# handful of structs, and we declare them ourselves in src/wlan/sys.rs. The
-# crate would drag in the windows-link/raw-dylib machinery, which needs either
-# mingw's dlltool (gnu target) or the multi-GB Visual C++ build tools plus the
-# Windows SDK (msvc target). Hand-rolled FFI keeps the build to a stock rustup.
-
-# --- Step 2 (MCP layer) will add, once the toolchain is confirmed and we can
-# --- compile-iterate the pre-1.0 rmcp API against a live compiler:
-#   rmcp     = { version = "0.16", features = ["server", "transport-io", "macros"] }
-#   tokio    = { version = "1", features = ["rt-multi-thread", "macros", "io-std"] }
-#   schemars = "0.8"
-#   tracing  = "0.1"
-#   tracing-subscriber = "0.3"
-# --- Persistence port (baseline_runs / events / inventory), 1:1 with node:sqlite:
-#   rusqlite = { version = "0.32", features = ["bundled"] }
 
 [profile.release]
 lto = "thin"

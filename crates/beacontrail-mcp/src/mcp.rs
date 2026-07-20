@@ -19,8 +19,8 @@ use std::time::Duration;
 use serde::Serialize;
 use serde_json::{json, Value};
 
-use crate::wlan;
-use crate::wlan::bss::BssSummary;
+use beacontrail::wlan;
+use beacontrail::wlan::bss::BssSummary;
 
 /// MCP revision this server implements.
 const PROTOCOL_VERSION: &str = "2025-06-18";
@@ -395,8 +395,8 @@ fn call_tool(params: &Value) -> Result<Value, RpcError> {
                 .unwrap_or(200)
                 .min(2000) as usize;
 
-            crate::events::recent(max, Some(within)).and_then(|events| {
-                let verdict = crate::events::detect(&events);
+            beacontrail::events::recent(max, Some(within)).and_then(|events| {
+                let verdict = beacontrail::events::detect(&events);
                 let include = arguments
                     .get("include_events")
                     .and_then(Value::as_bool)

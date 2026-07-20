@@ -124,7 +124,7 @@ pub fn meaning(event_id: u32) -> &'static str {
 /// return. Both exist because a busy machine writes thousands of these.
 pub fn recent(max: usize, within_seconds: Option<u64>) -> anyhow::Result<Vec<WlanEvent>> {
     let raw = sys::query_xml(CHANNEL, max, within_seconds)?;
-    let now = crate::report::now_epoch_seconds();
+    let now = crate::time::now_epoch_seconds();
 
     let mut events: Vec<WlanEvent> = raw.iter().filter_map(|xml| decode(xml)).collect();
 

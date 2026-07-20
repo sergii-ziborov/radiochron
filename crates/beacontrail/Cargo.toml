@@ -1,0 +1,32 @@
+[package]
+name = "beacontrail"
+description = "Wi-Fi diagnostics library: native WLAN collectors and 802.11 beacon analysis. No shell-outs, no runtime code generation, and no build toolchain beyond rustup."
+keywords = ["wifi", "wlan", "802-11", "diagnostics", "network"]
+categories = ["network-programming", "os::windows-apis"]
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+
+# No binding crate on purpose. The seven wlanapi.dll and four wevtapi.dll entry
+# points we need are declared by hand in the platform modules and the DLLs are
+# resolved at run time, because the `windows` crate drags in
+# windows-link/raw-dylib — which needs mingw's dlltool on the gnu target or the
+# multi-gigabyte Visual C++ build tools plus the Windows SDK on msvc.
+
+[features]
+default = ["platform"]
+# Native collectors. Turning this off currently leaves only `time`, because the
+# analysis modules still live alongside the FFI structs they read. Extracting
+# those data types into a collector-free core — which is what would let the
+# analyser build for wasm32 and for platforms whose collectors do not exist yet
+# — is the next structural step, and this flag is the seam it will use.
+platform = []

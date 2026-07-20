@@ -11,60 +11,13 @@
 //! legible in the body instead.
 
 use std::fmt::Write as _;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
 
-use crate::wlan::analyze::Analysis;
-use crate::wlan::bss::BssEntry;
-use crate::wlan::WifiStatus;
-
-/// Seconds since the Unix epoch.
-pub fn now_epoch_seconds() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0)
-}
-
-/// Current UTC time as RFC 3339, without pulling in a date library.
-///
-/// Uses Howard Hinnant's civil-from-days algorithm: the era arithmetic below is
-/// exact for all dates we can encounter and is far cheaper than a dependency
-/// whose Windows feature would drag the whole build-toolchain problem back in.
-pub fn now_iso8601() -> String {
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-
-    let days = (secs / 86_400) as i64;
-    let time_of_day = secs % 86_400;
-    let (year, month, day) = civil_from_days(days);
-
-    format!(
-        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
-        time_of_day / 3600,
-        (time_of_day % 3600) / 60,
-        time_of_day % 60
-    )
-}
-
-fn civil_from_days(days_since_epoch: i64) -> (i64, u32, u32) {
-    // Shift the epoch to 0000-03-01 so leap days land at the end of the cycle.
-    let z = days_since_epoch + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
-    let day_of_era = (z - era * 146_097) as u64;
-    let year_of_era =
-        (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
-    let year = year_of_era as i64 + era * 400;
-    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
-    let mp = (5 * day_of_year + 2) / 153;
-    let day = (day_of_year - (153 * mp + 2) / 5 + 1) as u32;
-    let month = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
-
-    (if month <= 2 { year + 1 } else { year }, month, day)
-}
+use beacontrail::time::now_iso8601;
+use beacontrail::wlan::analyze::Analysis;
+use beacontrail::wlan::bss::BssEntry;
+use beacontrail::wlan::WifiStatus;
 
 /// Render the report as Markdown.
 pub fn markdown(status: &[WifiStatus], entries: &[BssEntry], analysis: &Analysis) -> String {
@@ -189,26 +142,5 @@ pub fn json(status: &[WifiStatus], entries: &[BssEntry], analysis: &Analysis) ->
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn civil_from_days_matches_known_dates() {
-        assert_eq!(civil_from_days(0), (1970, 1, 1));
-        assert_eq!(civil_from_days(1), (1970, 1, 2));
-        // 2000-03-01: the leap-year boundary the era arithmetic exists to get right.
-        assert_eq!(civil_from_days(11_017), (2000, 3, 1));
-        assert_eq!(civil_from_days(11_016), (2000, 2, 29));
-        assert_eq!(civil_from_days(19_723), (2024, 1, 1));
-    }
-
-    #[test]
-    fn timestamp_is_rfc3339_shaped() {
-        let stamp = now_iso8601();
-        assert_eq!(stamp.len(), 20, "{stamp}");
-        assert!(stamp.ends_with('Z'));
-        assert_eq!(stamp.as_bytes()[4], b'-');
-        assert_eq!(stamp.as_bytes()[10], b'T');
-    }
-}
+// Calendar arithmetic and its tests moved to `beacontrail::time`, where the
+// event-log parser shares them.
