@@ -8,53 +8,78 @@
 <meta name="robots" content="index, follow">
 <link rel="canonical" href="https://radiochron.com/privacy">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-<style>
-:root{--y:#FCEE0A;--k:#0D0D08;--dim:#8f8b6d;--mono:ui-monospace,"Cascadia Mono",Consolas,monospace}
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:system-ui,"Segoe UI",Roboto,Arial,sans-serif;background:var(--y);color:var(--k);line-height:1.6}
-.wrap{max-width:760px;margin:0 auto;padding:48px 24px 80px}
-.tag{font-family:var(--mono);font-size:.8rem;letter-spacing:.06em;border-left:3px solid var(--k);padding:2px 0 2px 10px;margin-bottom:18px}
-h1{font-weight:900;text-transform:uppercase;letter-spacing:-.02em;font-size:clamp(2rem,6vw,3.2rem);margin-bottom:26px}
-h2{font-weight:900;text-transform:uppercase;font-size:1.05rem;margin:30px 0 8px}
-p{max-width:66ch;margin-top:10px}
-code{font-family:var(--mono);font-size:.9em}
-a{color:var(--k)}
-.back{display:inline-block;font-family:var(--mono);font-size:.82rem;margin-bottom:34px;text-decoration:none;border-bottom:2px solid var(--k)}
-.note{margin-top:40px;font-family:var(--mono);font-size:.76rem;color:#6b6710}
-</style>
+<link rel="stylesheet" href="/styles.css?v=1">
 </head>
 <body>
-<div class="wrap">
-  <a class="back" href="/">&larr; radiochron.com</a>
-  <div class="tag">//: PRIVACY</div>
-  <h1>Nothing leaves<br>your machine</h1>
 
-  <h2>The software</h2>
-  <p>RadioChron runs where the radio is. Collectors read the local WLAN stack and
-    the local event log; the chronicle is written to a file you choose; the MCP
-    server speaks stdio to a client on the same machine. There is no telemetry,
-    no update check, no network call of any kind in the library or the server —
-    the engine has no HTTP client to make one with.</p>
+<header>
+  <a class="mark" href="/">
+    <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect width="26" height="26" fill="#0D0D08"/><path d="M3 17 L7 17 9 8 12 21 15 12 17 17 23 17" fill="none" stroke="#FCEE0A" stroke-width="2.2"/></svg>
+    RADIOCHRON <span class="v">v0.2</span>
+  </a>
+  <nav>
+    <a href="/#verdict">verdict</a>
+    <a href="/#chronicle">chronicle</a>
+    <a href="/#devices">devices</a>
+    <a href="/#surfaces">surfaces</a>
+    <a href="/#tools">mcp</a>
+    <a href="/#roadmap">roadmap</a>
+    <a href="/electron">desktop</a>
+    <a href="/privacy">privacy</a>
+    <a href="https://github.com/sergii-ziborov/radiochron">github</a>
+  </nav>
+</header>
 
-  <h2>What is sensitive anyway</h2>
-  <p>The data RadioChron collects is sensitive even though it never transmits it:
-    SSIDs, BSSIDs and MAC addresses are location-identifying — a BSSID can be
-    resolved to a street address through public geolocation databases. If you
-    share a chronicle, a diagnostics bundle or an MCP transcript, treat it like
-    a location trace and redact accordingly. Saved Wi-Fi passwords are never
-    read: the tool surface deliberately has no way to ask.</p>
+<section class="band pagehead" style="padding-top:26px">
+  <div class="wrap">
+    <div class="crumbs"><a href="/">radiochron.com</a> / <b>privacy</b></div>
+    <div class="tag">//: PRIVACY</div>
+    <h1>Nothing leaves your machine</h1>
 
-  <h2>This website</h2>
-  <p>Static files, no cookies, no analytics, no JavaScript. It is served by
-    Cloudflare, which processes standard access logs (IP address, user agent)
-    as our hosting provider to deliver the site and mitigate abuse. We add
-    nothing on top and see nothing individual.</p>
+    <h3 style="margin-top:34px">The software</h3>
+    <p>RadioChron runs where the radio is. Collectors read the local WLAN stack and
+      the local event log; the chronicle is written to a file you choose; the MCP
+      server speaks stdio to a client on the same machine. There is no telemetry,
+      no update check, no network call of any kind in the library or the server —
+      the engine has no HTTP client to make one with.</p>
 
-  <h2>Contact</h2>
-  <p>Questions or concerns: open an issue at
-    <a href="https://github.com/sergii-ziborov/radiochron">github.com/sergii-ziborov/radiochron</a>.</p>
+    <h3 style="margin-top:28px">What is sensitive anyway</h3>
+    <p>The data RadioChron collects is sensitive even though it never transmits it:
+      SSIDs, BSSIDs and MAC addresses are location-identifying — a BSSID can be
+      resolved to a street address through public geolocation databases. If you
+      share a chronicle, a diagnostics bundle or an MCP transcript, treat it like
+      a location trace and redact accordingly. Saved Wi-Fi passwords are never
+      read: the tool surface deliberately has no way to ask.</p>
 
-  <div class="note">Last updated 2026-07-20 · © 2026 Sergii Ziborov</div>
-</div>
+    <h3 style="margin-top:28px">This website</h3>
+    <p>Static files, no cookies, no analytics, no JavaScript. It is served by
+      Cloudflare, which processes standard access logs (IP address, user agent)
+      as our hosting provider to deliver the site and mitigate abuse. We add
+      nothing on top and see nothing individual.</p>
+
+    <h3 style="margin-top:28px">Contact</h3>
+    <p>Questions or concerns: open an issue at
+      <a href="https://github.com/sergii-ziborov/radiochron">github.com/sergii-ziborov/radiochron</a>.</p>
+
+    <div class="note">Last updated 2026-07-20</div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="big">RADIOCHRON</div>
+    <div class="cols">
+      <a href="https://github.com/sergii-ziborov/radiochron">github.com/sergii-ziborov/radiochron</a>
+      <a href="/electron">desktop app</a>
+      <a href="/license">MIT license</a>
+      <a href="/privacy">privacy</a>
+    </div>
+    <div class="note">No telemetry. No cookies. No analytics. Nothing leaves your machine — the
+      diagnostics run where the radio is, and stay there.<br><br>
+      © 2026 Sergii Ziborov. This site is static, weighs about as much as one stock-photo, and
+      renders without JavaScript.</div>
+  </div>
+</footer>
+
 </body>
 </html>

@@ -36,117 +36,7 @@
   "sameAs": [ "https://github.com/sergii-ziborov/radiochron" ]
 }
 </script>
-<style>
-:root{
-  --y:#FCEE0A; --y2:#d9cd08; --k:#0D0D08; --k2:#171712;
-  --ink:#0D0D08; --paper:#EAE6CB; --dim:#8f8b6d; --cyan:#39D5DD;
-  --mono:ui-monospace,"Cascadia Mono",Consolas,"Liberation Mono",monospace;
-  --sans:system-ui,"Segoe UI",Roboto,Arial,sans-serif;
-}
-*{margin:0;padding:0;box-sizing:border-box}
-html{scroll-behavior:smooth}
-@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}}
-body{font-family:var(--sans);background:var(--y);color:var(--ink);line-height:1.55}
-.band{padding:72px 24px}
-.band.k{background:var(--k);color:var(--paper);
-  background-image:repeating-linear-gradient(0deg,rgba(252,238,10,.035) 0 1px,transparent 1px 4px)}
-.wrap{max-width:1060px;margin:0 auto}
-h1,h2,h3{font-weight:900;text-transform:uppercase;letter-spacing:-.02em;line-height:1.04}
-h1{font-size:clamp(2.6rem,7.2vw,5rem)}
-h2{font-size:clamp(1.7rem,4vw,2.6rem);margin-bottom:20px}
-h3{font-size:1.02rem;letter-spacing:.02em;margin-bottom:8px}
-.k h2{color:var(--y)}
-p{max-width:64ch}
-a{color:inherit}
-.k a{color:var(--cyan)}
-code,pre{font-family:var(--mono)}
-.tag{display:inline-block;font-family:var(--mono);font-size:.8rem;letter-spacing:.06em;
-  border-left:3px solid currentColor;padding:2px 0 2px 10px;margin-bottom:18px;opacity:.85}
-.chip{display:inline-block;font-family:var(--mono);font-size:.78rem;font-weight:700;
-  background:var(--k);color:var(--y);padding:6px 12px;margin:4px 6px 0 0;
-  clip-path:polygon(0 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%)}
-.k .chip{background:var(--y);color:var(--k)}
-.cut{clip-path:polygon(0 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%)}
-.grid{display:grid;gap:18px;margin-top:26px}
-.g2{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
-.g3{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
-.card{background:var(--k);color:var(--paper);padding:22px;position:relative}
-.card h3{color:var(--y)}
-.k .card{background:#14140e;outline:1px solid rgba(252,238,10,.25)}
-.card .m{font-family:var(--mono);font-size:.82rem;color:var(--dim)}
-.term{background:var(--k);color:var(--paper);font-family:var(--mono);font-size:.86rem;
-  padding:18px 20px 20px;overflow-x:auto;margin-top:26px}
-.term .bar{display:flex;gap:6px;margin-bottom:14px}
-.term .bar i{width:10px;height:10px;background:var(--y)}
-.term .bar i:nth-child(2){background:var(--cyan)}
-.term .bar i:nth-child(3){background:#3a3a2c}
-.term .c{color:var(--dim)}
-.term .g{color:var(--y)}
-.term pre{line-height:1.7;white-space:pre}
-.k .term{outline:1px solid rgba(252,238,10,.3)}
-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;
-  padding:18px 24px;max-width:1060px;margin:0 auto}
-.mark{font-weight:900;font-size:1.05rem;letter-spacing:.02em;display:flex;align-items:center;gap:9px}
-.mark svg{display:block}
-.mark .v{font-family:var(--mono);font-weight:400;font-size:.72rem;background:var(--k);color:var(--y);padding:2px 7px}
-nav{display:flex;flex-wrap:wrap;gap:4px 18px;font-family:var(--mono);font-size:.82rem}
-nav a{text-decoration:none;border-bottom:2px solid transparent;padding-bottom:2px}
-nav a:hover{border-color:var(--k)}
-.hero{position:relative;overflow:hidden;padding:60px 24px 84px}
-.hero .wrap{position:relative;z-index:1}
-.hero .sub{font-size:1.12rem;max-width:56ch;margin-top:22px}
-.hero .circ{display:none;position:absolute;right:0;top:0;height:100%;opacity:.55;z-index:0;pointer-events:none}
-@media (min-width:1120px){.hero .circ{display:block;width:min(38vw,520px)}}
-.circ .base{opacity:.3}
-.circ .sig{stroke-dasharray:16 384;animation:trace 5.2s linear infinite}
-.circ .d1{animation-delay:1s}.circ .d2{animation-delay:2s}
-.circ .d3{animation-delay:3s}.circ .d4{animation-delay:4s}
-.circ rect{animation:node 2.6s steps(2,start) infinite}
-.circ rect:nth-child(2n){animation-delay:.65s}
-.circ rect:nth-child(3n){animation-delay:1.3s}
-@keyframes trace{to{stroke-dashoffset:-400}}
-@keyframes node{50%{opacity:.3}}
-.pulse{display:block;width:100%;height:44px;margin-top:28px}
-/* When the circuit ornament is visible, the pulse keeps to the text column so
-   the two animations never share horizontal territory. 560px ends well before
-   the circuit's left edge at every viewport ≥1120px. */
-@media (min-width:1120px){.pulse{max-width:560px}}
-.pulse .base{opacity:.3}
-.pulse .sig{stroke-dasharray:80 1120;animation:trace2 4.6s linear infinite}
-@keyframes trace2{to{stroke-dashoffset:-1200}}
-@media (prefers-reduced-motion:reduce){.circ .sig,.circ rect,.pulse .sig{animation:none}}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-top:34px}
-.stat{background:var(--k);color:var(--paper);padding:16px 18px}
-.stat b{display:block;font-size:1.65rem;color:var(--y);font-family:var(--mono);letter-spacing:-.03em}
-.stat span{font-family:var(--mono);font-size:.72rem;letter-spacing:.08em;color:var(--dim)}
-.bars{margin-top:26px;font-family:var(--mono);font-size:.8rem}
-.bars .row{display:grid;grid-template-columns:170px 1fr;align-items:center;gap:12px;margin-top:12px}
-.bars .bar{height:26px;background:var(--y);position:relative}
-.bars .bar.dim{background:#3c3c2b}
-.bars .bar b{position:absolute;right:8px;top:3px;color:var(--k);font-size:.8rem}
-.bars .bar.dim b{color:var(--paper)}
-table{border-collapse:collapse;width:100%;margin-top:22px;font-size:.92rem}
-th,td{text-align:left;padding:11px 14px;border-bottom:1px solid rgba(252,238,10,.22);vertical-align:top}
-th{font-family:var(--mono);font-size:.74rem;letter-spacing:.1em;text-transform:uppercase;color:var(--y)}
-td code{color:var(--y);font-size:.84rem}
-td .m{color:var(--dim);font-family:var(--mono);font-size:.78rem}
-ul.h{list-style:none;margin-top:14px}
-ul.h li{padding:9px 0 9px 22px;position:relative;max-width:70ch}
-ul.h li::before{content:"";position:absolute;left:0;top:16px;width:10px;height:10px;background:currentColor;
-  clip-path:polygon(0 0,100% 0,100% 70%,70% 100%,0 100%)}
-.k ul.h li::before{background:var(--y)}
-.road li b{font-family:var(--mono);font-size:.72rem;letter-spacing:.08em;padding:2px 8px;margin-right:10px}
-.road .done b{background:var(--y);color:var(--k)}
-.road .plan b{outline:1px solid var(--y);color:var(--y)}
-footer{background:var(--k);color:var(--paper);padding:56px 24px 42px;
-  background-image:repeating-linear-gradient(0deg,rgba(252,238,10,.035) 0 1px,transparent 1px 4px)}
-footer .big{font-weight:900;font-size:clamp(2.4rem,9vw,6rem);letter-spacing:-.03em;color:var(--y);line-height:1}
-footer .cols{display:flex;flex-wrap:wrap;gap:16px 46px;margin-top:26px;font-family:var(--mono);font-size:.82rem}
-footer .note{margin-top:30px;font-family:var(--mono);font-size:.76rem;color:var(--dim);max-width:72ch}
-.blink{animation:bl 1.1s steps(1) infinite}
-@keyframes bl{50%{opacity:0}}
-@media (prefers-reduced-motion: reduce){.blink{animation:none}}
-</style>
+<link rel="stylesheet" href="/styles.css?v=1">
 </head>
 <body>
 
@@ -391,7 +281,7 @@ radiochron = { git = "…", default-features = false, features = ["status"] }
     <div class="big">RADIOCHRON</div>
     <div class="cols">
       <a href="https://github.com/sergii-ziborov/radiochron">github.com/sergii-ziborov/radiochron</a>
-      <a href="https://github.com/sergii-ziborov/radiochron-electron">radiochron-electron</a>
+      <a href="/electron">desktop app</a>
       <a href="/license">MIT license</a>
       <a href="/privacy">privacy</a>
     </div>

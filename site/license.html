@@ -8,28 +8,37 @@
 <meta name="robots" content="index, follow">
 <link rel="canonical" href="https://radiochron.com/license">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-<style>
-:root{--y:#FCEE0A;--k:#0D0D08;--mono:ui-monospace,"Cascadia Mono",Consolas,monospace}
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:system-ui,"Segoe UI",Roboto,Arial,sans-serif;background:var(--y);color:var(--k);line-height:1.6}
-.wrap{max-width:760px;margin:0 auto;padding:48px 24px 80px}
-.tag{font-family:var(--mono);font-size:.8rem;letter-spacing:.06em;border-left:3px solid var(--k);padding:2px 0 2px 10px;margin-bottom:18px}
-h1{font-weight:900;text-transform:uppercase;letter-spacing:-.02em;font-size:clamp(2rem,6vw,3.2rem);margin-bottom:22px}
-p{max-width:66ch;margin-top:10px}
-a{color:var(--k)}
-.back{display:inline-block;font-family:var(--mono);font-size:.82rem;margin-bottom:34px;text-decoration:none;border-bottom:2px solid var(--k)}
-pre{background:var(--k);color:#EAE6CB;font-family:var(--mono);font-size:.8rem;line-height:1.65;padding:22px;margin-top:26px;overflow-x:auto;white-space:pre-wrap;clip-path:polygon(0 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%)}
-</style>
+<link rel="stylesheet" href="/styles.css?v=1">
 </head>
 <body>
-<div class="wrap">
-  <a class="back" href="/">&larr; radiochron.com</a>
-  <div class="tag">//: LICENSE</div>
-  <h1>MIT, all of it</h1>
-  <p>The <a href="https://github.com/sergii-ziborov/radiochron">radiochron</a> library,
-    the <code style="font-family:var(--mono)">radiochron-mcp</code> server, the
-    <a href="https://github.com/sergii-ziborov/radiochron-electron">desktop app</a>
-    and this website are released under the MIT License.</p>
+
+<header>
+  <a class="mark" href="/">
+    <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect width="26" height="26" fill="#0D0D08"/><path d="M3 17 L7 17 9 8 12 21 15 12 17 17 23 17" fill="none" stroke="#FCEE0A" stroke-width="2.2"/></svg>
+    RADIOCHRON <span class="v">v0.2</span>
+  </a>
+  <nav>
+    <a href="/#verdict">verdict</a>
+    <a href="/#chronicle">chronicle</a>
+    <a href="/#devices">devices</a>
+    <a href="/#surfaces">surfaces</a>
+    <a href="/#tools">mcp</a>
+    <a href="/#roadmap">roadmap</a>
+    <a href="/electron">desktop</a>
+    <a href="/privacy">privacy</a>
+    <a href="https://github.com/sergii-ziborov/radiochron">github</a>
+  </nav>
+</header>
+
+<section class="band pagehead legal" style="padding-top:26px">
+  <div class="wrap">
+    <div class="crumbs"><a href="/">radiochron.com</a> / <b>license</b></div>
+    <div class="tag">//: LICENSE</div>
+    <h1>MIT, all of it</h1>
+    <p style="margin-top:16px">The <a href="https://github.com/sergii-ziborov/radiochron">radiochron</a>
+      library, the <code>radiochron-mcp</code> server, the
+      <a href="https://github.com/sergii-ziborov/radiochron-electron">desktop app</a>
+      and this website are released under the MIT License.</p>
 <pre>MIT License
 
 Copyright (c) 2026 Sergii Ziborov
@@ -51,6 +60,24 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.</pre>
-</div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="big">RADIOCHRON</div>
+    <div class="cols">
+      <a href="https://github.com/sergii-ziborov/radiochron">github.com/sergii-ziborov/radiochron</a>
+      <a href="/electron">desktop app</a>
+      <a href="/license">MIT license</a>
+      <a href="/privacy">privacy</a>
+    </div>
+    <div class="note">No telemetry. No cookies. No analytics. Nothing leaves your machine — the
+      diagnostics run where the radio is, and stay there.<br><br>
+      © 2026 Sergii Ziborov. This site is static, weighs about as much as one stock-photo, and
+      renders without JavaScript.</div>
+  </div>
+</footer>
+
 </body>
 </html>
