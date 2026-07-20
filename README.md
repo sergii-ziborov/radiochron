@@ -26,9 +26,13 @@ scan. That means each data path depended on `powershell.exe` + the .NET CSC
 compiler, paid a cold-compile cost, parsed locale-dependent English text, and
 tripped AV/WDAC on exactly the managed corporate machines it targets.
 
-BeaconTrail calls the same Win32 APIs directly as typed FFI:
+BeaconTrail calls the same Win32 APIs directly through hand-written FFI. It does
+not depend on the `windows` crate either: we need seven `wlanapi.dll` entry
+points and a handful of `#[repr(C)]` structs, and declaring them ourselves keeps
+the build free of `raw-dylib`/`dlltool` and the Visual C++ build tools. The DLL
+is resolved at run time via `LoadLibraryW`, so no import library is required.
 
-| Data source | Native API (`windows-rs`) | Replaces |
+| Data source | Native API | Replaces |
 |---|---|---|
 | Interface + current connection | `WlanQueryInterface` | `netsh wlan show interfaces` |
 | Nearby BSS list, dBm, IEs | `WlanGetNetworkBssList` | embedded C# `Add-Type` |
@@ -45,21 +49,25 @@ structured values instead of localized text.
 ## Status
 
 - [x] Project scaffold, MIT, crate layout
-- [x] `wlan` module — interfaces + current connection (`WlanOpenHandle` /
-      `WlanEnumInterfaces` / `WlanQueryInterface`)
-- [ ] First green build + `cargo run --example probe` on real hardware
-- [ ] `WlanGetNetworkBssList` + 802.11 Information Element parser
+- [x] Hand-written `wlanapi.dll` FFI with run-time DLL resolution
+- [x] `wlan` module — interfaces + current connection
+- [x] `WlanGetNetworkBssList` + 802.11 Information Element parser
       (RSN/WPA/HT/VHT/HE/EHT, vendor OUIs, rates, center frequency)
+- [x] Verified on real hardware: Intel Wi-Fi 6E AX211, 44 BSS entries across
+      2.4/5/6 GHz, dBm and capability flags decoded correctly
 - [ ] WLAN AutoConfig event log via `wevtapi`
 - [ ] SQLite persistence (`baseline_runs`, events, device inventory)
 - [ ] `rmcp` stdio MCP server surface
 
 ## Build
 
-Requires the Rust toolchain and a linker for the `windows` crate.
+Needs nothing but [rustup](https://rustup.rs). No Visual C++ build tools, no
+Windows SDK, no mingw, no administrator rights — `rust-toolchain.toml` pins the
+self-sufficient GNU toolchain.
 
 ```powershell
-cargo run --example probe   # prove the native WLAN path
+cargo test                  # unit tests (IE parser, ABI layout)
+cargo run --example probe   # live proof against the real adapter
 cargo build --release       # produce the server binary
 ```
 

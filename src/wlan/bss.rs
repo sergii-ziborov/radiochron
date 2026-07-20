@@ -7,13 +7,8 @@
 //! which was already raw-byte logic in that C# — becomes a safe slice walk.
 
 use serde::Serialize;
-use windows::core::GUID;
-use windows::Win32::Foundation::HANDLE;
-use windows::Win32::NetworkManagement::WiFi::{
-    dot11_BSS_type_any, WlanFreeMemory, WlanGetNetworkBssList, WlanScan, WLAN_BSS_ENTRY,
-    WLAN_BSS_LIST,
-};
 
+use super::sys::{self, Guid, WlanBssEntry, WlanBssList};
 use super::{mac_to_string, phy_type, ssid_to_string, WlanClient};
 
 /// Parsed summary of the 802.11 Information Elements carried in a beacon.
@@ -60,10 +55,19 @@ pub struct BssEntry {
 /// seconds later, after which [`bss_list`] returns refreshed entries.
 pub fn request_scan() -> anyhow::Result<usize> {
     let client = WlanClient::open()?;
+    let api = sys::api()?;
     let mut requested = 0usize;
 
     for guid in super::interface_guids(&client)? {
-        let ret = unsafe { WlanScan(client.handle, &guid, None, None, None) };
+        let ret = unsafe {
+            (api.scan)(
+                client.handle,
+                &guid as *const Guid,
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null_mut(),
+            )
+        };
         if ret == 0 {
             requested += 1;
         }
@@ -78,45 +82,45 @@ pub fn bss_list() -> anyhow::Result<Vec<BssEntry>> {
     let mut out = Vec::new();
 
     for guid in super::interface_guids(&client)? {
-        collect_bss_for_interface(client.handle, &guid, &mut out)?;
+        collect_for_interface(client.handle, &guid, &mut out)?;
     }
 
     Ok(out)
 }
 
-fn collect_bss_for_interface(
-    handle: HANDLE,
-    guid: &GUID,
+fn collect_for_interface(
+    handle: sys::Handle,
+    guid: &Guid,
     out: &mut Vec<BssEntry>,
 ) -> anyhow::Result<()> {
+    let api = sys::api()?;
+
     unsafe {
-        let mut list_ptr: *mut WLAN_BSS_LIST = std::ptr::null_mut();
-        let ret = WlanGetNetworkBssList(
+        let mut list_ptr: *mut WlanBssList = std::ptr::null_mut();
+        let ret = (api.get_network_bss_list)(
             handle,
-            guid as *const GUID,
-            None,
-            dot11_BSS_type_any,
-            false,
-            None,
+            guid as *const Guid,
+            std::ptr::null(),
+            sys::DOT11_BSS_TYPE_ANY,
+            0,
+            std::ptr::null_mut(),
             &mut list_ptr,
         );
-        // A radio that is off or busy returns a non-zero code; that is not fatal
+        // A radio that is off or busy returns a non-zero code. That is not fatal
         // for the other interfaces, so skip rather than abort the whole call.
         if ret != 0 || list_ptr.is_null() {
             return Ok(());
         }
 
         let list = &*list_ptr;
-        let entries = std::slice::from_raw_parts(
-            list.wlanBssEntries.as_ptr(),
-            list.dwNumberOfItems as usize,
-        );
+        let entries =
+            std::slice::from_raw_parts(list.bss_entries.as_ptr(), list.num_items as usize);
 
         for entry in entries {
             out.push(read_entry(entry));
         }
 
-        WlanFreeMemory(list_ptr as *const core::ffi::c_void);
+        (api.free_memory)(list_ptr as *mut core::ffi::c_void);
     }
 
     Ok(())
@@ -124,32 +128,32 @@ fn collect_bss_for_interface(
 
 /// # Safety
 /// `entry` must point into a live `WLAN_BSS_LIST` allocation, because the IE
-/// bytes live at `entry + ulIeOffset` inside that same allocation.
-unsafe fn read_entry(entry: &WLAN_BSS_ENTRY) -> BssEntry {
-    let base = entry as *const WLAN_BSS_ENTRY as *const u8;
+/// bytes live at `entry + ie_offset` inside that same allocation.
+unsafe fn read_entry(entry: &WlanBssEntry) -> BssEntry {
+    let base = entry as *const WlanBssEntry as *const u8;
 
-    // Bound the IE blob defensively: a malformed/hostile beacon must not turn
+    // Bound the IE blob defensively: a malformed or hostile beacon must not turn
     // into an out-of-bounds read. 4096 mirrors the original C# guard.
-    let ie_bytes: &[u8] = if entry.ulIeOffset > 0 && entry.ulIeSize > 0 && entry.ulIeSize <= 4096 {
-        std::slice::from_raw_parts(base.add(entry.ulIeOffset as usize), entry.ulIeSize as usize)
+    let ie_bytes: &[u8] = if entry.ie_offset > 0 && entry.ie_size > 0 && entry.ie_size <= 4096 {
+        std::slice::from_raw_parts(base.add(entry.ie_offset as usize), entry.ie_size as usize)
     } else {
         &[]
     };
 
     BssEntry {
-        ssid: ssid_to_string(&entry.dot11Ssid),
-        bssid: mac_to_string(&entry.dot11Bssid),
-        bss_type: bss_type(entry.dot11BssType.0),
-        phy_type: phy_type(entry.dot11BssPhyType.0),
-        rssi_dbm: entry.lRssi,
-        link_quality: entry.uLinkQuality,
-        center_frequency_khz: entry.ulChCenterFrequency,
-        beacon_period_tu: entry.usBeaconPeriod,
-        in_reg_domain: entry.bInRegDomain != 0,
-        capability_information: entry.usCapabilityInformation,
-        timestamp: entry.ullTimestamp,
-        host_timestamp: entry.ullHostTimestamp,
-        rates_mbps: decode_rates(&entry.wlanRateSet.usRateSet, entry.wlanRateSet.uRateSetLength),
+        ssid: ssid_to_string(&entry.dot11_ssid),
+        bssid: mac_to_string(&entry.dot11_bssid),
+        bss_type: bss_type(entry.dot11_bss_type),
+        phy_type: phy_type(entry.dot11_bss_phy_type),
+        rssi_dbm: entry.rssi,
+        link_quality: entry.link_quality,
+        center_frequency_khz: entry.ch_center_frequency,
+        beacon_period_tu: entry.beacon_period,
+        in_reg_domain: entry.in_reg_domain != 0,
+        capability_information: entry.capability_information,
+        timestamp: entry.timestamp,
+        host_timestamp: entry.host_timestamp,
+        rates_mbps: decode_rates(&entry.rate_set.rate_set, entry.rate_set.rate_set_length),
         information_elements: parse_information_elements(ie_bytes),
     }
 }
@@ -202,7 +206,7 @@ pub fn parse_information_elements(bytes: &[u8]) -> InformationElements {
         push_unique_string(&mut names, ie_name(id));
         count += 1;
 
-        // Vendor-specific: first three value bytes are the OUI. A 00:50:F2
+        // Vendor-specific: the first three value bytes are the OUI. A 00:50:F2
         // OUI with subtype 1 is the legacy WPA (pre-RSN) element.
         if id == 221 && len >= 3 {
             let oui = format!(

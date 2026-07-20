@@ -1,50 +1,51 @@
-//! Safe-ish wrappers over the native Windows WLAN API (`wlanapi.dll`) via
-//! `windows-rs`.
+//! Native Windows WLAN collectors.
 //!
 //! This module is the whole point of BeaconTrail's "no C#, no PowerShell"
-//! thesis. The original app reached `wlanapi.dll` by compiling embedded C#
-//! at runtime through PowerShell `Add-Type`; here we call the same functions
-//! (`WlanOpenHandle` / `WlanEnumInterfaces` / `WlanQueryInterface`) directly
-//! as typed FFI — no shell, no .NET, no runtime code generation.
-//!
-//! Verified against `windows` 0.62 on `stable-x86_64-pc-windows-*`.
+//! thesis. The predecessor reached `wlanapi.dll` by compiling embedded C# at
+//! runtime through PowerShell `Add-Type`; here we call the same functions
+//! directly through our own FFI declarations (see [`sys`]) — no shell, no .NET,
+//! no runtime code generation, and no heavyweight build toolchain.
 
 use serde::Serialize;
-use windows::core::GUID;
-use windows::Win32::Foundation::HANDLE;
-use windows::Win32::NetworkManagement::WiFi::{
-    WlanCloseHandle, WlanEnumInterfaces, WlanFreeMemory, WlanOpenHandle, WlanQueryInterface,
-    wlan_intf_opcode_current_connection, DOT11_SSID, WLAN_API_VERSION_2_0,
-    WLAN_CONNECTION_ATTRIBUTES, WLAN_INTERFACE_INFO_LIST,
-};
 
 pub mod bss;
+pub mod sys;
+
+use sys::{Dot11Ssid, Guid, WlanConnectionAttributes, WlanInterfaceInfoList};
 
 /// RAII owner of the WLAN client handle.
-struct WlanClient {
-    handle: HANDLE,
+pub(crate) struct WlanClient {
+    pub(crate) handle: sys::Handle,
 }
 
 impl WlanClient {
-    fn open() -> anyhow::Result<Self> {
+    pub(crate) fn open() -> anyhow::Result<Self> {
+        let api = sys::api()?;
         let mut negotiated: u32 = 0;
-        let mut handle = HANDLE::default();
+        let mut handle: sys::Handle = std::ptr::null_mut();
+
         let ret = unsafe {
-            WlanOpenHandle(WLAN_API_VERSION_2_0, None, &mut negotiated, &mut handle)
+            (api.open_handle)(
+                sys::WLAN_API_VERSION_2_0,
+                std::ptr::null_mut(),
+                &mut negotiated,
+                &mut handle,
+            )
         };
-        // windows-rs 0.62 types the WLAN returns as a bare `u32` Win32 error code
-        // (not the `WIN32_ERROR` newtype used elsewhere in the bindings).
         if ret != 0 {
             anyhow::bail!("WlanOpenHandle failed (code {ret})");
         }
+
         Ok(Self { handle })
     }
 }
 
 impl Drop for WlanClient {
     fn drop(&mut self) {
-        unsafe {
-            let _ = WlanCloseHandle(self.handle, None);
+        if let Ok(api) = sys::api() {
+            unsafe {
+                (api.close_handle)(self.handle, std::ptr::null_mut());
+            }
         }
     }
 }
@@ -77,24 +78,26 @@ pub struct WifiStatus {
 }
 
 /// Collect the GUID of every WLAN interface on the machine.
-fn interface_guids(client: &WlanClient) -> anyhow::Result<Vec<GUID>> {
+pub(crate) fn interface_guids(client: &WlanClient) -> anyhow::Result<Vec<Guid>> {
+    let api = sys::api()?;
+
     unsafe {
-        let mut list_ptr: *mut WLAN_INTERFACE_INFO_LIST = std::ptr::null_mut();
-        let ret = WlanEnumInterfaces(client.handle, None, &mut list_ptr);
+        let mut list_ptr: *mut WlanInterfaceInfoList = std::ptr::null_mut();
+        let ret = (api.enum_interfaces)(client.handle, std::ptr::null_mut(), &mut list_ptr);
         if ret != 0 || list_ptr.is_null() {
             anyhow::bail!("WlanEnumInterfaces failed (code {ret})");
         }
 
         let list = &*list_ptr;
         let guids = std::slice::from_raw_parts(
-            list.InterfaceInfo.as_ptr(),
-            list.dwNumberOfItems as usize,
+            list.interface_info.as_ptr(),
+            list.num_items as usize,
         )
         .iter()
-        .map(|info| info.InterfaceGuid)
+        .map(|info| info.interface_guid)
         .collect();
 
-        WlanFreeMemory(list_ptr as *const core::ffi::c_void);
+        (api.free_memory)(list_ptr as *mut core::ffi::c_void);
         Ok(guids)
     }
 }
@@ -102,79 +105,79 @@ fn interface_guids(client: &WlanClient) -> anyhow::Result<Vec<GUID>> {
 /// Enumerate every WLAN interface and, for each, its current connection (if any).
 pub fn wifi_status() -> anyhow::Result<Vec<WifiStatus>> {
     let client = WlanClient::open()?;
+    let api = sys::api()?;
     let mut out = Vec::new();
 
     unsafe {
-        let mut list_ptr: *mut WLAN_INTERFACE_INFO_LIST = std::ptr::null_mut();
-        let ret = WlanEnumInterfaces(client.handle, None, &mut list_ptr);
+        let mut list_ptr: *mut WlanInterfaceInfoList = std::ptr::null_mut();
+        let ret = (api.enum_interfaces)(client.handle, std::ptr::null_mut(), &mut list_ptr);
         if ret != 0 || list_ptr.is_null() {
             anyhow::bail!("WlanEnumInterfaces failed (code {ret})");
         }
 
         let list = &*list_ptr;
-        let items = std::slice::from_raw_parts(
-            list.InterfaceInfo.as_ptr(),
-            list.dwNumberOfItems as usize,
-        );
+        let items =
+            std::slice::from_raw_parts(list.interface_info.as_ptr(), list.num_items as usize);
 
         for info in items {
             let interface = WlanInterface {
-                guid: guid_to_string(&info.InterfaceGuid),
-                description: wide_to_string(&info.strInterfaceDescription),
-                state: interface_state(info.isState.0),
+                guid: guid_to_string(&info.interface_guid),
+                description: wide_to_string(&info.interface_description),
+                state: interface_state(info.state),
             };
             let connection =
-                query_current_connection(client.handle, &info.InterfaceGuid).unwrap_or(None);
+                query_current_connection(client.handle, &info.interface_guid).unwrap_or(None);
             out.push(WifiStatus { interface, connection });
         }
 
-        WlanFreeMemory(list_ptr as *const core::ffi::c_void);
+        (api.free_memory)(list_ptr as *mut core::ffi::c_void);
     }
 
     Ok(out)
 }
 
-/// Query `wlan_intf_opcode_current_connection` for one interface.
+/// Query the current connection for one interface.
 ///
-/// Returns `Ok(None)` when the interface is not associated (Windows returns a
-/// non-zero code such as `ERROR_INVALID_STATE`), which is a normal state, not an
-/// error worth propagating.
+/// Returns `Ok(None)` when the interface is not associated — Windows reports a
+/// non-zero code such as `ERROR_INVALID_STATE`, which is a normal state rather
+/// than an error worth propagating.
 unsafe fn query_current_connection(
-    handle: HANDLE,
-    guid: &GUID,
+    handle: sys::Handle,
+    guid: &Guid,
 ) -> anyhow::Result<Option<CurrentConnection>> {
+    let api = sys::api()?;
     let mut data_size: u32 = 0;
     let mut data_ptr: *mut core::ffi::c_void = std::ptr::null_mut();
 
-    let ret = WlanQueryInterface(
+    let ret = (api.query_interface)(
         handle,
-        guid as *const GUID,
-        wlan_intf_opcode_current_connection,
-        None,
+        guid as *const Guid,
+        sys::WLAN_INTF_OPCODE_CURRENT_CONNECTION,
+        std::ptr::null_mut(),
         &mut data_size,
         &mut data_ptr,
-        None,
+        std::ptr::null_mut(),
     );
     if ret != 0 || data_ptr.is_null() {
         return Ok(None);
     }
 
-    let attrs = &*(data_ptr as *const WLAN_CONNECTION_ATTRIBUTES);
-    let assoc = &attrs.wlanAssociationAttributes;
-    let quality = assoc.wlanSignalQuality;
+    let attrs = &*(data_ptr as *const WlanConnectionAttributes);
+    let assoc = &attrs.association;
+    let quality = assoc.signal_quality;
 
     let connection = CurrentConnection {
-        profile_name: nonempty(wide_to_string(&attrs.strProfileName)),
-        ssid: ssid_to_string(&assoc.dot11Ssid),
-        bssid: Some(mac_to_string(&assoc.dot11Bssid)),
-        phy_type: phy_type(assoc.dot11PhyType.0),
+        profile_name: nonempty(wide_to_string(&attrs.profile_name)),
+        ssid: ssid_to_string(&assoc.dot11_ssid),
+        bssid: Some(mac_to_string(&assoc.dot11_bssid)),
+        phy_type: phy_type(assoc.dot11_phy_type),
         signal_quality: quality,
         rssi_dbm_estimate: quality_to_rssi(quality),
-        rx_rate_kbps: assoc.ulRxRate,
-        tx_rate_kbps: assoc.ulTxRate,
+        rx_rate_kbps: assoc.rx_rate,
+        tx_rate_kbps: assoc.tx_rate,
     };
 
-    WlanFreeMemory(data_ptr as *const core::ffi::c_void);
+    (api.free_memory)(data_ptr);
     Ok(Some(connection))
 }
 
@@ -198,7 +201,7 @@ fn interface_state(state: i32) -> String {
     .to_string()
 }
 
-fn phy_type(t: i32) -> String {
+pub(crate) fn phy_type(t: i32) -> String {
     match t {
         1 => "fhss",
         2 => "dsss",
@@ -221,22 +224,22 @@ fn wide_to_string(w: &[u16]) -> String {
     String::from_utf16_lossy(&w[..len])
 }
 
-fn ssid_to_string(ssid: &DOT11_SSID) -> Option<String> {
-    let len = (ssid.uSSIDLength as usize).min(ssid.ucSSID.len());
+pub(crate) fn ssid_to_string(ssid: &Dot11Ssid) -> Option<String> {
+    let len = (ssid.ssid_length as usize).min(ssid.ssid.len());
     if len == 0 {
         return None;
     }
-    Some(String::from_utf8_lossy(&ssid.ucSSID[..len]).to_string())
+    Some(String::from_utf8_lossy(&ssid.ssid[..len]).to_string())
 }
 
-fn mac_to_string(mac: &[u8; 6]) -> String {
+pub(crate) fn mac_to_string(mac: &[u8; 6]) -> String {
     mac.iter()
         .map(|b| format!("{b:02x}"))
         .collect::<Vec<_>>()
         .join(":")
 }
 
-fn guid_to_string(g: &GUID) -> String {
+fn guid_to_string(g: &Guid) -> String {
     format!(
         "{:08x}-{:04x}-{:04x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
         g.data1,
@@ -258,5 +261,43 @@ fn nonempty(s: String) -> Option<String> {
         None
     } else {
         Some(s)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn signal_quality_maps_onto_the_windows_dbm_scale() {
+        assert_eq!(quality_to_rssi(0), -100);
+        assert_eq!(quality_to_rssi(100), -50);
+        assert_eq!(quality_to_rssi(50), -75);
+        // Out-of-range input is clamped, never wrapped.
+        assert_eq!(quality_to_rssi(255), -50);
+    }
+
+    #[test]
+    fn wide_string_stops_at_the_nul_terminator() {
+        let mut buf = [0u16; 8];
+        for (i, c) in "wlan".encode_utf16().enumerate() {
+            buf[i] = c;
+        }
+        assert_eq!(wide_to_string(&buf), "wlan");
+    }
+
+    #[test]
+    fn ssid_honours_the_declared_length() {
+        let mut ssid = Dot11Ssid { ssid_length: 5, ssid: [0; 32] };
+        ssid.ssid[..5].copy_from_slice(b"MyNet");
+        assert_eq!(ssid_to_string(&ssid).as_deref(), Some("MyNet"));
+
+        let empty = Dot11Ssid { ssid_length: 0, ssid: [0; 32] };
+        assert_eq!(ssid_to_string(&empty), None);
+    }
+
+    #[test]
+    fn mac_is_lowercase_colon_separated() {
+        assert_eq!(mac_to_string(&[0xa4, 0x2b, 0x8c, 0x00, 0x1f, 0xe0]), "a4:2b:8c:00:1f:e0");
     }
 }

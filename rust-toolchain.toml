@@ -1,0 +1,9 @@
+# Pinned to the GNU toolchain deliberately.
+#
+# BeaconTrail has no C dependencies and declares its Windows FFI by hand, so the
+# stock rustup GNU toolchain is self-sufficient: it ships its own linker and the
+# kernel32 import library, and wlanapi.dll is resolved at run time. That means
+# `cargo build` works on a bare machine with nothing but rustup — no Visual C++
+# build tools, no Windows SDK, no mingw install, no administrator rights.
+[toolchain]
+channel = "stable-x86_64-pc-windows-gnu"
