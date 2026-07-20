@@ -1,15 +1,23 @@
 # RadioChron
 
-Local-first Windows Wi-Fi diagnostics as a **Model Context Protocol (MCP)
-server**. Pure Rust — no PowerShell, no `netsh` text scraping, no embedded C#,
-no .NET, no Node.
+**[radiochron.com](https://radiochron.com)** · the chronicle of your radio.
 
-Ask an AI assistant *"why is my Wi-Fi flaky?"* and let it read the actual radio
-environment: real dBm, channel frequencies, and 802.11 capability flags parsed
-straight from beacon frames.
+A pure-Rust Wi-Fi diagnostics **library** and the **MCP server** built on it.
+No PowerShell, no `netsh` text scraping, no embedded C#, no .NET, no Node —
+and no build toolchain beyond a stock `rustup`.
 
-> Early release. The collectors below work and are verified on real hardware;
-> history, run comparison and the event timeline are still being ported.
+One engine, four surfaces:
+
+| Surface | Status | For |
+|---|---|---|
+| `radiochron` — Rust library | this repo | IoT agents, exporters, CLIs — anything embedding collectors, analysis and the chronicle recorder |
+| `radiochron-mcp` — MCP server | this repo | AI assistants: six read-only tools + resources over stdio |
+| `radiochron` — npm package | **planned** | Node.js apps, via napi-rs prebuilt binaries — no Rust toolchain on the consumer's machine (name verified free) |
+| [`radiochron-electron`](https://github.com/sergii-ziborov/radiochron-electron) — desktop | separate repo | evidence timelines and network inventory on the same engine |
+
+> Early release, Windows-first. The collectors are verified on real hardware;
+> crates.io/npm publishes, cellular collectors and Linux nl80211 are on the
+> [roadmap](https://radiochron.com/#straight).
 
 ## Why
 

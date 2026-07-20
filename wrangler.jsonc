@@ -1,0 +1,14 @@
+// Cloudflare deploy config for the radiochron.com landing (static assets Worker).
+// Deploy: npx wrangler deploy   (requires `npx wrangler login` once)
+// The custom_domain route auto-creates DNS + cert for radiochron.com on this account's zone.
+{
+  "name": "radiochron",
+  "compatibility_date": "2026-07-01",
+  "assets": {
+    "directory": "./site"
+  },
+  "routes": [
+    { "pattern": "radiochron.com", "custom_domain": true },
+    { "pattern": "www.radiochron.com", "custom_domain": true }
+  ]
+}
