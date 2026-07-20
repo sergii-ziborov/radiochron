@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RadioChron Desktop — evidence timelines and network inventory</title>
+<meta name="description" content="RadioChron Desktop is the Electron app on the same Rust engine: baseline runs, run comparison, evidence timelines, device inventory and diagnostics bundles for support tickets.">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://radiochron.com/electron">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="RadioChron">
+<meta property="og:title" content="RadioChron Desktop — the chronicle, on screen">
+<meta property="og:description" content="Baseline runs, run comparison, evidence timelines and network inventory — a desktop client of the same engine an AI assistant drives.">
+<meta property="og:url" content="https://radiochron.com/electron">
+<meta property="og:image" content="https://radiochron.com/og.png">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<style>
+:root{--y:#FCEE0A;--k:#0D0D08;--paper:#EAE6CB;--dim:#8f8b6d;--cyan:#39D5DD;
+  --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
+  --sans:system-ui,"Segoe UI",Roboto,Arial,sans-serif}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:var(--sans);background:var(--y);color:var(--k);line-height:1.55}
+.band{padding:64px 24px}
+.band.k{background:var(--k);color:var(--paper);
+  background-image:repeating-linear-gradient(0deg,rgba(252,238,10,.035) 0 1px,transparent 1px 4px)}
+.wrap{max-width:1060px;margin:0 auto}
+h1,h2,h3{font-weight:900;text-transform:uppercase;letter-spacing:-.02em;line-height:1.05}
+h1{font-size:clamp(2.4rem,6.4vw,4.4rem)}
+h2{font-size:clamp(1.6rem,3.6vw,2.4rem);margin-bottom:18px}
+h3{font-size:1rem;letter-spacing:.02em;margin-bottom:8px}
+.k h2{color:var(--y)}
+p{max-width:64ch}
+a{color:inherit}
+.k a{color:var(--cyan)}
+code,pre{font-family:var(--mono)}
+.tag{display:inline-block;font-family:var(--mono);font-size:.8rem;letter-spacing:.06em;
+  border-left:3px solid currentColor;padding:2px 0 2px 10px;margin-bottom:18px;opacity:.85}
+.cut{clip-path:polygon(0 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%)}
+.grid{display:grid;gap:18px;margin-top:26px;grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+.card{background:var(--k);color:var(--paper);padding:22px}
+.card h3{color:var(--y)}
+.k .card{background:#14140e;outline:1px solid rgba(252,238,10,.25)}
+.card .m{font-family:var(--mono);font-size:.82rem;color:var(--dim)}
+.term{background:var(--k);color:var(--paper);font-family:var(--mono);font-size:.86rem;
+  padding:18px 20px 20px;overflow-x:auto;margin-top:26px}
+.term .bar{display:flex;gap:6px;margin-bottom:14px}
+.term .bar i{width:10px;height:10px;background:var(--y)}
+.term .bar i:nth-child(2){background:var(--cyan)}
+.term .bar i:nth-child(3){background:#3a3a2c}
+.term .c{color:var(--dim)}
+.term .g{color:var(--y)}
+.term pre{line-height:1.7;white-space:pre}
+header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;
+  padding:18px 24px;max-width:1060px;margin:0 auto}
+.mark{font-weight:900;font-size:1.05rem;display:flex;align-items:center;gap:9px;text-decoration:none}
+.mark .v{font-family:var(--mono);font-weight:400;font-size:.72rem;background:var(--k);color:var(--y);padding:2px 7px}
+nav{display:flex;flex-wrap:wrap;gap:4px 18px;font-family:var(--mono);font-size:.82rem}
+nav a{text-decoration:none;border-bottom:2px solid transparent;padding-bottom:2px}
+nav a:hover{border-color:var(--k)}
+ul.h{list-style:none;margin-top:14px}
+ul.h li{padding:9px 0 9px 22px;position:relative;max-width:70ch}
+ul.h li::before{content:"";position:absolute;left:0;top:16px;width:10px;height:10px;background:currentColor;
+  clip-path:polygon(0 0,100% 0,100% 70%,70% 100%,0 100%)}
+.k ul.h li::before{background:var(--y)}
+.flow{font-family:var(--mono);font-size:.84rem;background:var(--k);color:var(--paper);
+  padding:22px;margin-top:26px;overflow-x:auto}
+.flow b{color:var(--y)}
+footer{padding:42px 24px;font-family:var(--mono);font-size:.8rem}
+footer a{margin-right:28px}
+</style>
+</head>
+<body>
+
+<header>
+  <a class="mark" href="/">
+    <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><rect width="26" height="26" fill="#0D0D08"/><path d="M3 17 L7 17 9 8 12 21 15 12 17 17 23 17" fill="none" stroke="#FCEE0A" stroke-width="2.2"/></svg>
+    RADIOCHRON <span class="v">DESKTOP</span>
+  </a>
+  <nav>
+    <a href="/">home</a>
+    <a href="#capabilities">capabilities</a>
+    <a href="#architecture">architecture</a>
+    <a href="#run">run it</a>
+    <a href="https://github.com/sergii-ziborov/radiochron-electron">github</a>
+  </nav>
+</header>
+
+<section class="band" style="padding-top:40px">
+  <div class="wrap">
+    <div class="tag">//: THE CHRONICLE, ON SCREEN</div>
+    <h1>Evidence you can<br>attach to a ticket</h1>
+    <p style="margin-top:20px;font-size:1.1rem">Intermittent Wi-Fi is hard to prove once the link
+      recovers. <strong>RadioChron Desktop</strong> turns transient failures into a record: baseline
+      runs, run-to-run comparison, event timelines with reconnect detection, and a local inventory
+      of every AP and device your machine has seen — all on the same Rust engine an AI assistant
+      drives, speaking the same protocol.</p>
+  </div>
+</section>
+
+<section class="band k" id="capabilities">
+  <div class="wrap">
+    <div class="tag">//: 01 — WHAT IT DOES</div>
+    <h2>Capabilities</h2>
+    <div class="grid">
+      <div class="card cut"><h3>Baseline runs</h3><div class="m">Capture a timed baseline of the
+        connection and environment; store runs locally in SQLite; compare any two to see what
+        changed between "it worked" and "it doesn't".</div></div>
+      <div class="card cut"><h3>Evidence timeline</h3><div class="m">WLAN AutoConfig events on a
+        timeline with reconnect-loop symptom detection — the story of the link, not a snapshot
+        of it.</div></div>
+      <div class="card cut"><h3>Network inventory</h3><div class="m">Every SSID/BSSID seen, with
+        real dBm, band and channel, security posture hints and OUI vendor enrichment. History of
+        when each was first and last seen.</div></div>
+      <div class="card cut"><h3>Relative RF view</h3><div class="m">A deterministic, signal-based
+        layout of the neighbourhood. Deliberately labelled a visualization — it does not claim
+        ranging or geolocation.</div></div>
+      <div class="card cut"><h3>Diagnostics bundles</h3><div class="m">One click packs runs,
+        events and analysis into a bundle for a support ticket. Redaction reminders included —
+        BSSIDs are location-identifying.</div></div>
+      <div class="card cut"><h3>Local-first</h3><div class="m">Everything stays on the machine.
+        No telemetry, no accounts, no cloud. External AI review exists only as an explicit,
+        opt-in action.</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="band" id="architecture">
+  <div class="wrap">
+    <div class="tag">//: 02 — ONE ENGINE, NOT TWO</div>
+    <h2>A client, like the assistant is</h2>
+    <p>The desktop app does not reimplement collection. It spawns the same <code>radiochron</code>
+      binary an MCP client uses and speaks the same JSON-RPC over stdio — so the scan you see in
+      the app and the scan an AI assistant reasons about are literally the same code path. When the
+      engine learns something new, both clients get it for free.</p>
+    <div class="flow cut"><pre>
+Windows WLAN / event log APIs
+        │
+   <b>radiochron</b> (Rust engine — collectors · analysis · chronicle)
+        │  MCP over stdio
+   ┌────┴─────────┐
+   │              │
+<b>AI assistant</b>   <b>RadioChron Desktop</b> (Electron/React)
+</pre></div>
+    <p style="margin-top:18px">The app's historical layers — runtime-compiled C# via PowerShell
+      <code>Add-Type</code> — are gone; native collection lives in the engine. napi-rs bindings
+      are planned so Node apps can import the library in-process instead of spawning it.</p>
+  </div>
+</section>
+
+<section class="band k" id="run">
+  <div class="wrap">
+    <div class="tag">//: 03 — RUN IT</div>
+    <h2>From source, today</h2>
+    <p>Portfolio beta: functional, honest about its edges, not yet a signed installer.
+      Windows 11, Node 22+.</p>
+    <div class="term cut">
+      <div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="g">$</span> git clone https://github.com/sergii-ziborov/radiochron-electron
+<span class="g">$</span> cd radiochron-electron
+<span class="g">$</span> npm ci &amp;&amp; npm run check     <span class="c"># typecheck + 75 tests</span>
+<span class="g">$</span> npm run dev</pre>
+    </div>
+    <ul class="h">
+      <li>Needs the engine binary: a sibling <code>../radiochron</code> checkout built with
+        <code>cargo build --release</code>, or point <code>RADIOCHRON_MCP</code> at any
+        <code>radiochron.exe</code>.</li>
+      <li>Not a packet sniffer, not geolocation, not a vulnerability scanner — an incident
+        recorder and evidence notebook.</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <a href="/">&larr; radiochron.com</a>
+    <a href="https://github.com/sergii-ziborov/radiochron-electron">github</a>
+    <a href="/license">MIT</a>
+    <a href="/privacy">privacy</a>
+  </div>
+</footer>
+
+</body>
+</html>

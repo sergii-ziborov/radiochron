@@ -1,0 +1,20 @@
+{
+  "name": "radiochron",
+  "version": "0.2.0",
+  "description": "The chronicle of your radio. Wi-Fi diagnostics MCP server: connection-history verdicts, a change-only recorder, native WLAN collectors. One line to install, no Rust toolchain.",
+  "bin": { "radiochron": "bin.js" },
+  "files": ["bin.js", "radiochron.exe", "README.md"],
+  "scripts": {
+    "prepublishOnly": "node prepare.js"
+  },
+  "license": "MIT",
+  "author": "Sergii Ziborov",
+  "homepage": "https://radiochron.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sergii-ziborov/radiochron.git"
+  },
+  "bugs": { "url": "https://github.com/sergii-ziborov/radiochron/issues" },
+  "keywords": ["mcp", "model-context-protocol", "wifi", "wlan", "diagnostics", "network", "windows", "rust"],
+  "engines": { "node": ">=18" }
+}

@@ -19,3 +19,7 @@ Desktop.ini
 
 # wrangler local cache — account cache and dev bundles, never source
 /.wrangler/
+
+# npm launcher package build artifacts - the engine is bundled at publish time
+/npm/radiochron.exe
+/npm/*.tgz
