@@ -16,3 +16,6 @@ Desktop.ini
 
 # NOTE: Cargo.lock IS committed — this crate ships a binary, so we pin the
 # exact dependency graph for reproducible builds.
+
+# wrangler local cache — account cache and dev bundles, never source
+/.wrangler/
