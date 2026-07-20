@@ -98,10 +98,20 @@ No arguments, no configuration, no environment variables.
 | Tool | Arguments | Returns |
 |---|---|---|
 | `wifi_status` | — | Every WLAN interface, its state, and for the associated one: SSID, BSSID, PHY type (`ht`/`vht`/`he`/`eht`), signal quality, estimated RSSI in dBm, rx/tx rates |
-| `wifi_networks` | `refresh_scan?: boolean` | Nearby BSS entries: SSID, BSSID, real RSSI in dBm, channel center frequency, rates, and capability flags parsed from beacon IEs (RSN/WPA/HT/VHT/HE/EHT, vendor OUIs) |
+| `wifi_networks` | `refresh_scan?: boolean`<br>`detail?: "summary" \| "full"` | `{count, refreshed, detail, networks}` — nearby BSS entries with SSID, BSSID, band, channel, real RSSI in dBm, PHY type, security and capability flags |
 | `wifi_scan` | — | Triggers a driver scan on each interface; returns how many accepted |
 
 All three are read-only.
+
+Two behaviours worth knowing about `wifi_networks`:
+
+- **The driver cache can be empty or sparse.** If the first read returns nothing,
+  it is retried once behind a real scan rather than reported as "no networks" —
+  an agent would otherwise repeat that as a fact about the environment. The
+  `refreshed` field says whether a scan was performed.
+- **`summary` is the default** and costs ~150 bytes per network against ~1000 for
+  `full`. `full` adds raw IE ids and names, rates, timestamps and capability
+  bits; ask for it only when those fields are actually needed.
 
 ## Deliberately not exposed
 
@@ -118,16 +128,22 @@ model. They are not part of this server's tool surface, and calling them returns
 
 Measured on an Intel Wi-Fi 6E AX211 in a dense office environment:
 
-- 20/20 unit tests green, including C-ABI struct layout assertions
+- 25/25 unit tests green, including C-ABI struct layout assertions
 - `wifi_status` — connected, `phy=he`, −58 dBm, 649/432 Mbps
-- `wifi_networks` — **58 BSS** across 2.4 GHz (15), 5 GHz (23) and 6 GHz (20);
-  RSSI −91..−54 dBm; 57 of 58 RSN-protected; IE blobs 100–384 bytes
-- Full MCP session (`initialize` → `tools/list` → three `tools/call` → `ping`)
-  completes in ~4 s, essentially all of it the deliberate post-scan settle
+- `wifi_networks` — up to **58 BSS** across 2.4, 5 and 6 GHz; RSSI −91..−54 dBm;
+  band and channel resolved for every entry; IE blobs 100–384 bytes
+- Latency, excluding the deliberate 4 s post-scan settle: `wifi_status` ~74 ms,
+  cached `wifi_networks` and `wifi_scan` under 40 ms. Process start plus
+  `initialize` is ~61 ms of that.
 
-A useful correctness signal: 6 GHz APs report `RSN`+`HE` with **no** HT/VHT
-elements, which is exactly what the spec requires — a naive parser would not
-produce that pattern.
+Two useful correctness signals fall out of real captures: 6 GHz APs report
+`RSN`+`HE` with **no** HT/VHT elements, and a legacy 802.11g printer reports
+`phy=erp` with no capability flags at all. Both are exactly what the spec
+requires, and neither is what a naive parser would produce.
+
+**Not field-verified:** the EHT (Wi-Fi 7) branch. No 802.11be AP has been in
+range, so it is covered only by a synthetic composite-beacon unit test. Legacy
+WPA detection has been seen firing on real hardware but is environment-dependent.
 
 ## Roadmap
 

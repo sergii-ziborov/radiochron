@@ -20,6 +20,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 
 use crate::wlan;
+use crate::wlan::bss::BssSummary;
 
 /// MCP revision this server implements.
 const PROTOCOL_VERSION: &str = "2025-06-18";
@@ -135,16 +136,29 @@ fn tool_definitions() -> Value {
         {
             "name": "wifi_networks",
             "description": "Nearby access points from the native WLAN BSS list: SSID, BSSID, real \
-                            RSSI in dBm, channel center frequency in kHz, supported rates, and \
-                            802.11 capability flags parsed from the beacon information elements \
-                            (RSN/WPA/HT/VHT/HE/EHT plus vendor OUIs). Read-only.",
+                            RSSI in dBm, band and channel, PHY type, and 802.11 security and \
+                            capability flags parsed from the beacon information elements \
+                            (RSN/WPA/HT/VHT/HE/EHT). Returns {count, refreshed, detail, networks}. \
+                            If the driver's cache comes back empty it is retried once behind a \
+                            real scan, and `refreshed` reports whether that happened. Read-only.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "refresh_scan": {
                         "type": "boolean",
-                        "description": "Trigger a fresh driver scan and wait ~4s before reading. \
-                                        Without this, cached scan results are returned immediately."
+                        "description": "Force a fresh driver scan and wait ~4s before reading. \
+                                        Cached results are returned immediately without it, but \
+                                        the cache can be sparse or stale — prefer this when the \
+                                        completeness of the list matters."
+                    },
+                    "detail": {
+                        "type": "string",
+                        "enum": ["summary", "full"],
+                        "description": "summary (default) returns ssid, bssid, band, channel, \
+                                        rssi_dbm, phy_type, security and caps. full adds raw IE \
+                                        ids and names, rates, timestamps and capability bits, and \
+                                        is several times larger — request it only when the extra \
+                                        fields are actually needed."
                     }
                 }
             }
@@ -173,18 +187,7 @@ fn call_tool(params: &Value) -> Result<Value, RpcError> {
         "wifi_status" => wlan::wifi_status().and_then(|v| encode(&v)),
         "wifi_scan" => wlan::bss::request_scan()
             .and_then(|count| encode(&json!({ "interfaces_scanning": count }))),
-        "wifi_networks" => {
-            if arguments
-                .get("refresh_scan")
-                .and_then(Value::as_bool)
-                .unwrap_or(false)
-            {
-                // A refused scan is not fatal: the cached list is still useful.
-                let _ = wlan::bss::request_scan();
-                std::thread::sleep(SCAN_SETTLE);
-            }
-            wlan::bss::bss_list().and_then(|v| encode(&v))
-        }
+        "wifi_networks" => collect_networks(&arguments).and_then(|v| encode(&v)),
         other => {
             return Err(RpcError {
                 code: METHOD_NOT_FOUND,
@@ -203,6 +206,49 @@ fn call_tool(params: &Value) -> Result<Value, RpcError> {
             "isError": true
         }),
     })
+}
+
+/// Read the BSS list, optionally forcing a scan first.
+///
+/// Windows will happily hand back an empty cache — the radio may never have
+/// scanned since boot, or previous results aged out. An empty first read is
+/// therefore retried once behind a real scan instead of being reported as "no
+/// networks", which an agent would repeat as a factual claim about the
+/// environment.
+fn collect_networks(arguments: &Value) -> anyhow::Result<Value> {
+    let full = arguments.get("detail").and_then(Value::as_str) == Some("full");
+    let mut refreshed = arguments
+        .get("refresh_scan")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+
+    if refreshed {
+        // A refused scan is not fatal: the cached list is still worth returning.
+        let _ = wlan::bss::request_scan();
+        std::thread::sleep(SCAN_SETTLE);
+    }
+
+    let mut entries = wlan::bss::bss_list()?;
+
+    if entries.is_empty() && !refreshed {
+        let _ = wlan::bss::request_scan();
+        std::thread::sleep(SCAN_SETTLE);
+        entries = wlan::bss::bss_list()?;
+        refreshed = true;
+    }
+
+    let networks = if full {
+        serde_json::to_value(&entries)?
+    } else {
+        serde_json::to_value(entries.iter().map(BssSummary::from).collect::<Vec<_>>())?
+    };
+
+    Ok(json!({
+        "count": entries.len(),
+        "refreshed": refreshed,
+        "detail": if full { "full" } else { "summary" },
+        "networks": networks,
+    }))
 }
 
 /// Compact, not pretty-printed: these payloads go into a model's context, where

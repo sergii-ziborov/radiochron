@@ -40,6 +40,10 @@ pub struct BssEntry {
     pub rssi_dbm: i32,
     pub link_quality: u32,
     pub center_frequency_khz: u32,
+    /// Derived: "2.4GHz", "5GHz", "6GHz" or "unknown".
+    pub band: &'static str,
+    /// Derived 802.11 channel number, where the frequency maps to one.
+    pub channel: Option<u16>,
     pub beacon_period_tu: u16,
     pub in_reg_domain: bool,
     pub capability_information: u16,
@@ -47,6 +51,81 @@ pub struct BssEntry {
     pub host_timestamp: u64,
     pub rates_mbps: Vec<f64>,
     pub information_elements: InformationElements,
+}
+
+/// Compact projection of [`BssEntry`] for the default MCP response.
+///
+/// A full entry costs roughly 900 bytes, most of it the IE name list (which
+/// merely restates `element_ids`), the raw rate table and two 64-bit
+/// timestamps. Across ~60 visible BSSIDs that is tens of thousands of tokens
+/// per tool call, so the fields an operator actually reasons about are split
+/// out and returned by default.
+#[derive(Debug, Serialize)]
+pub struct BssSummary {
+    pub ssid: Option<String>,
+    pub bssid: String,
+    pub band: &'static str,
+    pub channel: Option<u16>,
+    pub rssi_dbm: i32,
+    pub phy_type: String,
+    /// "rsn", "wpa" (legacy, pre-RSN) or "open".
+    pub security: &'static str,
+    /// Compact capability list, e.g. "HT,VHT,HE".
+    pub caps: String,
+}
+
+impl From<&BssEntry> for BssSummary {
+    fn from(entry: &BssEntry) -> Self {
+        let ie = &entry.information_elements;
+
+        let mut caps = Vec::new();
+        for (present, label) in [
+            (ie.has_ht, "HT"),
+            (ie.has_vht, "VHT"),
+            (ie.has_he, "HE"),
+            (ie.has_eht, "EHT"),
+        ] {
+            if present {
+                caps.push(label);
+            }
+        }
+
+        Self {
+            ssid: entry.ssid.clone(),
+            bssid: entry.bssid.clone(),
+            band: entry.band,
+            channel: entry.channel,
+            rssi_dbm: entry.rssi_dbm,
+            phy_type: entry.phy_type.clone(),
+            security: if ie.has_rsn {
+                "rsn"
+            } else if ie.has_wpa {
+                "wpa"
+            } else {
+                "open"
+            },
+            caps: caps.join(","),
+        }
+    }
+}
+
+/// Map a channel center frequency onto its band and 802.11 channel number.
+///
+/// 6 GHz uses its own numbering (channel 1 is centred at 5955 MHz), which is why
+/// it cannot share the 5 GHz formula.
+fn band_and_channel(center_khz: u32) -> (&'static str, Option<u16>) {
+    let mhz = center_khz / 1000;
+
+    match mhz {
+        2412..=2472 => ("2.4GHz", Some(((mhz - 2407) / 5) as u16)),
+        2484 => ("2.4GHz", Some(14)),
+        5000..=5895 => ("5GHz", Some(((mhz - 5000) / 5) as u16)),
+        5925..=7125 => {
+            let channel = (mhz as i32 - 5950) / 5;
+            ("6GHz", u16::try_from(channel).ok().filter(|c| *c >= 1))
+        }
+        _ => ("unknown", None),
+    }
 }
 
 /// Ask the driver to perform a fresh scan on every WLAN interface.
@@ -140,6 +219,8 @@ unsafe fn read_entry(entry: &WlanBssEntry) -> BssEntry {
         &[]
     };
 
+    let (band, channel) = band_and_channel(entry.ch_center_frequency);
+
     BssEntry {
         ssid: ssid_to_string(&entry.dot11_ssid),
         bssid: mac_to_string(&entry.dot11_bssid),
@@ -148,6 +229,8 @@ unsafe fn read_entry(entry: &WlanBssEntry) -> BssEntry {
         rssi_dbm: entry.rssi,
         link_quality: entry.link_quality,
         center_frequency_khz: entry.ch_center_frequency,
+        band,
+        channel,
         beacon_period_tu: entry.beacon_period,
         in_reg_domain: entry.in_reg_domain != 0,
         capability_information: entry.capability_information,
@@ -368,5 +451,111 @@ mod tests {
         // 0x8016 == basic-rate flag | 22 units => 11 Mbps; 0x0018 => 12 Mbps.
         let rates = decode_rates(&[0x8016, 0x0018, 0, 0], 4);
         assert_eq!(rates, vec![11.0, 12.0]);
+    }
+
+    /// A Wi-Fi 7 AP is not something we can rely on having in radio range, so the
+    /// EHT path is pinned here instead: a realistic composite beacon carrying
+    /// every generation of capability element at once.
+    #[test]
+    fn composite_beacon_reports_every_capability_generation() {
+        let mut bytes = tlv(0, b"Wi-Fi 7 AP"); // SSID
+        bytes.extend(tlv(1, &[0x82, 0x84, 0x8b, 0x96])); // supported rates
+        bytes.extend(tlv(7, b"IL\0")); // country
+        bytes.extend(tlv(11, &[0x01, 0x00, 0x20])); // BSS load
+        bytes.extend(tlv(48, &[0x01, 0x00, 0x00, 0x0f, 0xac, 0x04])); // RSN
+        bytes.extend(tlv(45, &[0; 26])); // HT capabilities
+        bytes.extend(tlv(61, &[0; 22])); // HT operation
+        bytes.extend(tlv(191, &[0; 12])); // VHT capabilities
+        bytes.extend(tlv(192, &[0; 5])); // VHT operation
+        bytes.extend(tlv(255, &[35, 0, 0])); // ext 35 = HE capabilities
+        bytes.extend(tlv(255, &[36, 0, 0])); // ext 36 = HE operation
+        bytes.extend(tlv(255, &[108, 0, 0])); // ext 108 = EHT capabilities
+        bytes.extend(tlv(255, &[106, 0, 0])); // ext 106 = EHT operation
+        bytes.extend(tlv(221, &[0x00, 0x50, 0xf2, 0x02, 0x01, 0x01])); // WMM, not WPA
+
+        let ie = parse_information_elements(&bytes);
+
+        assert!(ie.has_rsn);
+        assert!(ie.has_ht);
+        assert!(ie.has_vht);
+        assert!(ie.has_he);
+        assert!(
+            ie.has_eht,
+            "EHT must be detected from extension IDs 106/108"
+        );
+        assert!(ie.has_country);
+        assert!(ie.has_bss_load);
+        // Vendor subtype 2 is WMM; only subtype 1 means legacy WPA.
+        assert!(!ie.has_wpa);
+        assert_eq!(ie.extension_ids, vec![35, 36, 106, 108]);
+    }
+
+    /// WPA/RSN transitional APs advertise both. Both flags must survive, and the
+    /// summary must prefer the stronger one.
+    #[test]
+    fn transitional_ap_reports_both_wpa_and_rsn() {
+        let mut bytes = tlv(48, &[0x01, 0x00]); // RSN
+        bytes.extend(tlv(221, &[0x00, 0x50, 0xf2, 0x01, 0x01, 0x00])); // WPA v1
+
+        let ie = parse_information_elements(&bytes);
+        assert!(ie.has_rsn);
+        assert!(ie.has_wpa);
+        assert_eq!(summary_with(ie).security, "rsn");
+    }
+
+    #[test]
+    fn open_network_reports_open() {
+        let ie = parse_information_elements(&tlv(0, b"Guest"));
+        assert_eq!(summary_with(ie).security, "open");
+    }
+
+    #[test]
+    fn band_and_channel_cover_all_three_bands() {
+        assert_eq!(band_and_channel(2_412_000), ("2.4GHz", Some(1)));
+        assert_eq!(band_and_channel(2_462_000), ("2.4GHz", Some(11)));
+        assert_eq!(band_and_channel(2_484_000), ("2.4GHz", Some(14)));
+        assert_eq!(band_and_channel(5_180_000), ("5GHz", Some(36)));
+        assert_eq!(band_and_channel(5_765_000), ("5GHz", Some(153)));
+        // 6 GHz has its own numbering: channel 1 is centred at 5955 MHz.
+        assert_eq!(band_and_channel(5_955_000), ("6GHz", Some(1)));
+        assert_eq!(band_and_channel(6_295_000), ("6GHz", Some(69)));
+        assert_eq!(band_and_channel(1_000_000), ("unknown", None));
+    }
+
+    #[test]
+    fn summary_drops_the_bulky_fields() {
+        let entry = sample_entry(parse_information_elements(&tlv(48, &[0x01, 0x00])));
+        let json = serde_json::to_string(&BssSummary::from(&entry)).unwrap();
+
+        for bulky in ["names", "rates_mbps", "timestamp", "element_ids"] {
+            assert!(!json.contains(bulky), "summary must not carry {bulky}");
+        }
+        assert!(json.contains("\"security\":\"rsn\""));
+    }
+
+    fn summary_with(ie: InformationElements) -> BssSummary {
+        BssSummary::from(&sample_entry(ie))
+    }
+
+    fn sample_entry(information_elements: InformationElements) -> BssEntry {
+        let (band, channel) = band_and_channel(5_180_000);
+        BssEntry {
+            ssid: Some("Net".into()),
+            bssid: "aa:bb:cc:dd:ee:ff".into(),
+            bss_type: "infrastructure".into(),
+            phy_type: "he".into(),
+            rssi_dbm: -60,
+            link_quality: 80,
+            center_frequency_khz: 5_180_000,
+            band,
+            channel,
+            beacon_period_tu: 100,
+            in_reg_domain: true,
+            capability_information: 0,
+            timestamp: 0,
+            host_timestamp: 0,
+            rates_mbps: vec![6.0, 12.0],
+            information_elements,
+        }
     }
 }
