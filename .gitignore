@@ -1,7 +1,7 @@
 # Rust build output
 /target
 
-# Runtime state (mirrors the parent project's local-first data policy)
+# Runtime state
 /data
 *.sqlite
 *.sqlite-wal
@@ -14,14 +14,5 @@
 Thumbs.db
 Desktop.ini
 
-# NOTE: Cargo.lock IS committed — this crate ships a binary, so we pin the
-# exact dependency graph for reproducible builds.
-
-# wrangler local cache — account cache and dev bundles, never source
-/.wrangler/
-
-# npm launcher package build artifacts - the engine is bundled at publish time
-/npm/radiochron.exe
-/npm/*.tgz
-/npm/LICENSE-MIT
-/npm/LICENSE-APACHE
+# Cargo.lock remains committed so CI and embedded consumers exercise one exact
+# dependency graph; library users still resolve dependencies normally.

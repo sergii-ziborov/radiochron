@@ -1,99 +1,147 @@
-# RadioChron
+# radiochron
 
 **[radiochron.com](https://radiochron.com)** · the chronicle of your radio.
 
-A pure-Rust Wi-Fi diagnostics **library** and the **MCP server** built on it.
-No PowerShell, no `netsh` text scraping, no embedded C#, no .NET, no Node —
-and no build toolchain beyond a stock `rustup`.
+A pure-Rust Wi-Fi diagnostics library: native WLAN collectors, 802.11 beacon
+analysis, connection-history verdicts, and a change-only recorder. No
+PowerShell, no `netsh` text scraping, no embedded C#, no `.NET` — and **no build
+toolchain beyond a stock [`rustup`](https://rustup.rs)**.
 
-One engine, four surfaces:
+This crate is the engine. It knows nothing about MCP, JSON-RPC, or any
+transport — that lives in [`radiochron-mcp`](https://github.com/sergii-ziborov/radiochron-mcp),
+which depends on this one. An IoT agent, a CLI, a metrics exporter or a
+fleet-management service wants this crate and nothing else.
 
-| Surface | Status | For |
+```toml
+[dependencies]
+radiochron = "0.2"
+```
+
+## Repository family
+
+The IoT/core dependency stays deliberately independent from its delivery
+surfaces:
+
+| Repository | Purpose |
+|---|---|
+| [`radiochron`](https://github.com/sergii-ziborov/radiochron) | this portable Rust engine |
+| [`radiochron-mcp`](https://github.com/sergii-ziborov/radiochron-mcp) | Windows MCP server built on the engine |
+| [`radiochron-js`](https://github.com/sergii-ziborov/radiochron-js) | npm launcher that ships the prebuilt MCP binary |
+| [`radiochron-site`](https://github.com/sergii-ziborov/radiochron-site) | source for [radiochron.com](https://radiochron.com) |
+
+## Why no toolchain
+
+Collectors reach the OS through hand-written FFI with the DLL resolved at run
+time via `LoadLibraryExW` restricted to `System32`, rather than through a binding crate. The `windows`
+crate would drag in `windows-link`/`raw-dylib`, which needs mingw's `dlltool`
+on the GNU target or the multi-gigabyte Visual C++ build tools plus the Windows
+SDK on MSVC. Instead, the eight `wlanapi.dll` and four `wevtapi.dll` entry
+points are declared by hand with a handful of `#[repr(C)]` structs.
+
+The result: **three direct dependencies** — `serde`, `serde_json`, `anyhow` —
+for a 13-crate tree including everything transitive, and a build that needs
+nothing but `rustup` (the self-sufficient GNU toolchain works with no Visual
+Studio installed). On an embedded target that is the difference between adding
+a dependency and rebuilding the image.
+
+## Selecting capabilities
+
+Features are granular so an embedded target compiles only what it calls. A
+sensor that only needs association state and link strength takes `status` and
+nothing else:
+
+```toml
+radiochron = { version = "0.2", default-features = false, features = ["status"] }
+```
+
+| Feature | Enables | Depends on |
 |---|---|---|
-| `radiochron` — Rust library | this repo | IoT agents, exporters, CLIs — anything embedding collectors, analysis and the chronicle recorder |
-| `radiochron-mcp` — MCP server | this repo | AI assistants: ten typed tools + five resources over stdio |
-| `radiochron` — npm package | in this repo (`npm/`), **publish pending** | one-line MCP install for any client — ships the prebuilt server binary, no Rust toolchain on the consumer's machine |
-| [`radiochron-electron`](https://github.com/sergii-ziborov/radiochron-electron) — desktop | separate repo | evidence timelines and network inventory on the same engine |
+| `status`  | Interface enumeration + current-connection attributes ([`wlan::wifi_status`]) | — |
+| `scan`    | Nearby BSS list with raw 802.11 IE parsing ([`wlan::bss`]) | `status` |
+| `analyze` | The findings engine ([`wlan::analyze`]) | `scan` |
+| `sample`  | Connection dynamics sampled over a window ([`wlan::sample`]) | `status` |
+| `history` | Reading the Windows WLAN AutoConfig event log ([`events`]) | — |
+| `record`  | Writing our own change log — the [`chronicle`] | — |
 
-> Early release, Windows-first. The collectors are verified on real hardware;
-> crates.io/npm publishes, cellular collectors and Linux nl80211 are on the
-> [roadmap](https://radiochron.com/#roadmap).
+`default = ["status", "scan", "analyze", "sample", "history", "record"]`.
 
-## Why
+Reading history and writing it are separate on purpose: `history` reads what
+Windows already recorded; `record` keeps a chronicle of our own through a
+pluggable [`chronicle::Sink`] — which is what "history" will mean on platforms
+whose OS keeps no such log.
 
-Intermittent Wi-Fi failures are hard to explain once the connection recovers.
-RadioChron exposes what Windows already knows — interface state, nearby BSSIDs
-with real signal strength, security posture — through a protocol an assistant
-can drive directly. No screenshots, no copy-pasted `netsh` output.
+## Collect
 
-A snapshot says the link is fine right now. RadioChron keeps the **chronicle** —
-what the radio did over time — which is the only thing that can answer why it
-was not fine ten minutes ago.
+```rust
+use radiochron::wlan;
 
-The name is deliberately not Wi-Fi-specific: cellular collectors are the planned
-next domain, and for a device in the field the radio that matters may be either.
+// Every WLAN interface and, for the associated one, SSID / BSSID / PHY / dBm.
+for status in wlan::wifi_status()? {
+    if let Some(c) = status.connection {
+        println!("{:?} {} {} dBm (est)", c.ssid, c.phy_type, c.rssi_dbm_estimate);
+    }
+}
 
-## The pure-Rust thesis
+// Nearby APs. Wait for the driver's real completion notification, then retain
+// per-interface errors alongside useful entries from other radios.
+let refresh = wlan::bss::scan_and_wait(std::time::Duration::from_secs(12))?;
+let collection = wlan::bss::bss_list_detailed()?;
+# Ok::<(), anyhow::Error>(())
+```
 
-The predecessor (an Electron/TypeScript app) could not reach `wlanapi.dll` from
-Node, so it compiled embedded C# at runtime via PowerShell `Add-Type` for every
-scan. Each data path therefore depended on `powershell.exe` plus the .NET CSC
-compiler, paid a cold-compile cost, parsed locale-dependent English text, and
-tripped AV/WDAC on exactly the managed corporate machines it targeted.
+## Analyze — findings, not records
 
-RadioChron calls the same Win32 APIs through hand-written FFI. It does not
-depend on the `windows` crate either: eight `wlanapi.dll` entry points and a
-handful of `#[repr(C)]` structs are declared directly, and the DLL is resolved
-at run time via `LoadLibraryExW` restricted to `System32`. No import library, no `raw-dylib`, no `dlltool`,
-no Visual C++ build tools.
+`analyze` returns conclusions, not raw evidence: co-channel contention,
+crowded-channel association, weak signal, roam and band-steering candidates,
+insecure security, hidden SSIDs and scan-quality problems. Every [`Finding`]
+carries a caveat stating why it might be wrong — RSSI, for instance, is
+reconstructed by most Windows drivers from a 0..100 quality scale, so a
+reported −71 dBm may be anywhere in −69..−73.
 
-| Data source | Native API | Replaces |
-|---|---|---|
-| Interface + current connection | `WlanQueryInterface` | `netsh wlan show interfaces` |
-| Nearby BSS list, dBm, IEs | `WlanGetNetworkBssList` | embedded C# `Add-Type` |
-| Scan trigger | `WlanScan` | embedded C# `Add-Type` |
-| Connection history | `wevtapi` (`EvtQuery`/`EvtRender`) | `Get-WinEvent` |
+```rust
+use radiochron::wlan::{self, analyze};
 
-The event-log path is worth a note. `Get-WinEvent` returns a fully-rendered
-**localized** `Message` string, and the predecessor parsed that text — so it
-silently produced nothing on a German or Japanese Windows. `EvtRenderEventXml`
-returns the raw event XML with structured `EventData`, which is locale-invariant
-and needs neither `EvtFormatMessage` nor publisher metadata. Every rule keys on
-numeric codes, never on prose.
+let entries = wlan::bss::bss_list()?;
+let status = wlan::wifi_status()?;
+let connection = status.iter().find_map(|s| s.connection.as_ref());
 
-The MCP layer is hand-written too: the stdio transport is newline-delimited
-JSON-RPC 2.0, so an SDK that pulls an async runtime, a schema generator and a
-mandatory `chrono` (whose `clock` feature drags in `windows-link`/`raw-dylib`)
-would have reintroduced the exact build requirement this project avoids.
+let analysis = analyze::analyze(&entries, connection);
+for finding in &analysis.findings {
+    // finding.severity, finding.title, finding.caveat, ...
+}
+# Ok::<(), anyhow::Error>(())
+```
 
-**Total dependency count: three** — `serde`, `serde_json`, `anyhow`, for a
-13-crate tree including transitive dependencies. Release binary: **~1.0 MB**.
-Runtime requirements on the target machine: none.
+`sample::sample_connection_on(interface_guid, duration_s, interval_ms)` answers
+a different question — not "what is the state" but "is it stable": RSSI
+min/max/mean and swing, rx-rate range, distinct BSSIDs and roam count over a
+window. Collector errors are separate from genuine disconnected samples.
 
-For comparison, the nearest equivalent crate resolves to **51 crates** and does
-not build on a stock `rustup` toolchain at all — its transitive dependencies
-require mingw or the Visual C++ build tools. On an embedded target that is the
-difference between adding a dependency and rebuilding the image.
+## History — why it dropped earlier
 
-## Repository layout
+The `history` feature reads the WLAN AutoConfig event log directly through
+`wevtapi` and returns a [`events::detect::Verdict`]: reconnect loops, an AP
+repeatedly failing key exchange, a suspected credential mismatch.
 
-Two repositories, because a repository is not a crate — one repo can publish
-several crates, and `cargo add` users see crates, not repos:
+```rust
+use radiochron::events;
 
-| Name | What it is | Lives |
-|---|---|---|
-| `radiochron` | the library: collectors, 802.11 analysis, and the chronicle recorder | this repo, `crates/radiochron` |
-| `radiochron-mcp` | the MCP server crate; the installed binary is still named `radiochron` | this repo, `crates/radiochron-mcp` |
-| `radiochron-electron` | the desktop app (Node) | [separate repo](https://github.com/sergii-ziborov/radiochron-electron) |
+let recent = events::recent(200, Some(3600))?; // last hour, up to 200 events
+let verdict = events::detect::detect(&recent);
+# Ok::<(), anyhow::Error>(())
+```
 
-There is deliberately **no `radiochron-history` crate**. Reading history is the
-`history` feature (the Windows event log); writing it is the `record` feature —
-the `chronicle` module with a pluggable `Sink` trait. The shipped sink is
-append-only JSONL with built-in rotation (zero new dependencies, greppable, and
-safer across power loss than a database mid-transaction). Heavy backends belong
-in the consumer's crate as an `impl Sink` of ~30 lines: a bundled SQLite sink
-would drag in a C compile and break the stock-rustup build property this
-project is built around.
+It reads `EvtRenderEventXml` — the raw, **locale-invariant** event XML with
+structured `EventData` — not the fully-rendered localized `Message` string.
+Every rule keys on numeric event codes, never on prose, so it behaves
+identically on a German or Japanese Windows.
+
+## Record — the chronicle
+
+The `record` feature keeps a chronicle of change through a pluggable
+[`chronicle::Sink`]. The shipped sink is append-only JSONL with built-in
+rotation (zero new dependencies, greppable, and safer across power loss than a
+database mid-transaction):
 
 ```rust
 use radiochron::chronicle::{JsonlSink, Recorder, RecorderOptions, RotationPolicy};
@@ -101,164 +149,49 @@ use radiochron::chronicle::{JsonlSink, Recorder, RecorderOptions, RotationPolicy
 let sink = JsonlSink::open("chronicle.jsonl", RotationPolicy::default())?;
 let mut recorder = Recorder::new(sink, RecorderOptions::default());
 recorder.run_for(std::time::Duration::from_secs(3600))?; // or own the loop via .step()
+# Ok::<(), anyhow::Error>(())
 ```
 
 The chronicle records **change, not polls**: a stable link produces one
-`associated` line and then silence, however long you record. Its types, sink
-and change detector are OS-free — they are the part that ports to Linux,
-macOS and cellular collectors unchanged.
+`Associated` entry per interface and then silence, however long you record.
+Collector errors never impersonate disconnects; event-log tailing uses
+`EventRecordID` and records an explicit `HistoryGap` when a bounded poll loses
+records. Its types, sink
+([`chronicle::Sink`], [`chronicle::JsonlSink`], [`chronicle::VecSink`]) and
+[`chronicle::ChangeDetector`] are OS-free — they are the part that ports to
+Linux, macOS and cellular collectors unchanged. Heavy storage backends stay
+out of the tree: a SQLite sink is ~30 lines of `impl Sink` in your crate, which
+keeps *this* library building on stock `rustup` (`rusqlite`'s bundled C compile
+does not).
 
-## Build
+## Platform support
 
-Needs nothing but [rustup](https://rustup.rs). No Visual C++ build tools, no
-Windows SDK, no mingw, no administrator rights.
+|  | Windows | Linux | macOS |
+|---|---|---|---|
+| interface + association | **yes** | planned (nl80211) | planned (CoreWLAN) |
+| BSS list with raw IEs | **yes** | planned | limited by the public API |
+| connection history | **yes** | no equivalent | no equivalent |
 
-The GNU toolchain is self-sufficient — it ships its own linker — so on a machine
-without Visual Studio, select it once:
+Today the collectors are Windows-only; the analysis, chronicle and time modules
+are pure and portable. On non-Windows targets the OS-touching modules are
+compiled out, so the crate still builds — treat history and the radio
+collectors as optional capabilities, not assumptions.
 
-```powershell
-rustup default stable-x86_64-pc-windows-gnu
-```
-
-Then:
-
-```powershell
-cargo test                  # unit tests
-cargo build --release       # target\release\radiochron.exe
-cargo run --example probe   # human-readable dump against the real adapter
-```
-
-The MSVC toolchain works too if you already have the Visual C++ build tools; CI
-builds on GNU so that an MSVC-only assumption cannot creep in unnoticed.
-
-## Use it with an MCP client
-
-Register the binary. For Claude Code:
-
-```powershell
-claude mcp add radiochron -- "C:\path\to\radiochron.exe"
-```
-
-Or add it to a client config directly:
-
-```json
-{
-  "mcpServers": {
-    "radiochron": {
-      "command": "C:\\path\\to\\radiochron.exe"
-    }
-  }
-}
-```
-
-No arguments are required. `RADIOCHRON_CHRONICLE_PATH` optionally overrides the
-default `%LOCALAPPDATA%\RadioChron\chronicle.jsonl` recorder path.
-
-## Tools
-
-| Tool | Arguments | Returns |
-|---|---|---|
-| `wifi_status` | — | Every WLAN interface, its state, and for the associated one: SSID, BSSID, PHY type (`ht`/`vht`/`he`/`eht`), signal quality, estimated RSSI in dBm, rx/tx rates |
-| `wifi_networks` | `refresh_scan?: boolean`<br>`detail?: "summary" \| "full"` | Nearby BSS entries plus cache age, per-interface errors and the exact scan-completion result; parses WPA2/WPA3/OWE, ciphers, PMF, channel width and BSS load |
-| `wifi_analyze` | `refresh_scan?: boolean` | **Findings, not records.** Co-channel contention, crowded-channel association, weak signal, band-steering and roam candidates, insecure security, hidden SSIDs, scan-quality problems |
-| `wifi_history` | `within_seconds?: number`<br>`max_events?: number`<br>`include_events?: boolean` | **Why it dropped earlier.** Reads the WLAN AutoConfig event log and returns a verdict: reconnect loops, an AP repeatedly failing key exchange, suspected credential mismatch |
-| `wifi_sample` | `interface_guid?: string`<br>`duration_seconds?: 1..120`<br>`interval_ms?: 250..60000` | Cancelable connection sampling with MCP progress; collector failures are distinct from real disconnects |
-| `wifi_scan` | — | Triggers a scan and waits for Windows' per-interface completion/failure notification |
-| `chronicle_start` | `interval_seconds?: 1..300`<br>`signal_threshold_db?: 1..50` | Starts the local, rotating change-only JSONL recorder |
-| `chronicle_stop` | — | Stops and flushes the recorder |
-| `chronicle_status` | — | Recorder state, storage path and errors |
-| `chronicle_recent` | `max_entries?: 1..1000` | Recent entries across the active and rotated chronicle files |
-
-Status, history, sampling and reads are read-only. A Wi-Fi scan updates the
-driver cache and emits standard scan frames; chronicle start/stop control a
-local file writer. MCP annotations advertise those distinctions explicitly.
-
-**Prefer `wifi_analyze`.** On a real 43-BSS environment it answers in 802 bytes
-where the full BSS list costs 41 KB — a 98% reduction — because it returns the
-conclusion instead of the evidence. Every finding carries a `caveat` field
-stating why it might be wrong; that is part of the payload on purpose, since a
-bare severity invites over-trust and several of these signals are genuinely
-weaker than they look. RSSI, for instance, is reconstructed by most Windows
-drivers from a 0..100 quality scale, so a reported −71 dBm may be anywhere in
-−69..−73.
-
-`wifi_sample` answers a different question: not "what is the state" but "is it
-stable". A mean of −65 dBm looks fine until you see the 40 dB swing behind it.
-
-Two behaviours worth knowing about `wifi_networks`:
-
-- **The driver cache can be empty or sparse.** If the first read returns nothing,
-  it is retried once behind a real scan rather than reported as "no networks" —
-  an agent would otherwise repeat that as a fact about the environment. The
-  `refresh` reports accepted, completed, failed and timed-out interfaces, while
-  `cache_age_seconds` is `null` when this process has not observed a completion.
-- **`summary` is the default** and costs ~150 bytes per network against ~1000 for
-  `full`. `full` adds raw IE ids and names, rates, timestamps and capability
-  bits; ask for it only when those fields are actually needed.
-
-## Deliberately not exposed
-
-The parent project grew collectors that are unsafe to hand to an autonomous
-model. They are not part of this server's tool surface, and calling them returns
-`-32601 unknown tool`:
-
-- **plaintext saved Wi-Fi keys** — a model must not be able to read and leak credentials
-- **adapter MAC change / adapter restart / computer rename** — privileged, disruptive, can drop the operator off the network
-- **active LAN sweeps** — emits probe traffic, trips IDS on managed segments
-- **external AI-review shell-out** — arbitrary process execution and off-box data flow
-
-## Verified
-
-Measured on an Intel Wi-Fi 6E AX211 in a dense office environment:
-
-- 79 unit tests green, including C-ABI struct layout assertions
-- `wifi_status` — connected, `phy=he`, −58 dBm, 649/432 Mbps
-- `wifi_networks` — up to **58 BSS** across 2.4, 5 and 6 GHz; RSSI −91..−54 dBm;
-  band and channel resolved for every entry; IE blobs 100–384 bytes
-- A live MCP round-trip verified all ten tools, structured results, real
-  scan-complete notification (1/1 interface), progress delivery, cancellation
-  in ~1 second, and chronicle start/read/stop.
-
-Two useful correctness signals fall out of real captures: 6 GHz APs report
-`RSN`+`HE` with **no** HT/VHT elements, and a legacy 802.11g printer reports
-`phy=erp` with no capability flags at all. Both are exactly what the spec
-requires, and neither is what a naive parser would produce.
-
-**Not field-verified:** the EHT (Wi-Fi 7) branch. No 802.11be AP has been in
-range, so it is covered only by a synthetic composite-beacon unit test. Legacy
-WPA detection has been seen firing on real hardware but is environment-dependent.
-
-## Roadmap
-
-Shipped so far: native WLAN collectors, 802.11 IE analysis, event-log verdicts,
-the chronicle recorder and the MCP server — verified on real hardware. Next:
-
-- **Cellular collectors** — RSRP/RSRQ/SINR via Windows MBN and Linux
-  ModemManager; for a field device the radio that matters may not be Wi-Fi
-- **Linux via nl80211** — raw IEs straight from the kernel, richer than Windows
-- **npm bindings via napi-rs** prebuilds, plus the crates.io / npm publishes
-- **macOS via CoreWLAN** — honestly less: the public API hides BSSIDs behind a
-  location permission and exposes no raw IEs
-
-See the full [roadmap](https://radiochron.com/#roadmap).
+- **MSRV:** Rust 1.78
+- **Edition:** 2021
 
 ## Safety and privacy
 
-SSIDs, BSSIDs, MAC addresses and event logs are sensitive. RadioChron is
+SSIDs, BSSIDs, MAC addresses and event logs are sensitive. This library is
 local-first, has no telemetry, and transmits nothing off the machine. Only run
-scans against networks you own or are authorized to test. This is not a packet
+scans against networks you own or are authorized to test. It is not a packet
 sniffer, a geolocation system, or offensive Wi-Fi tooling.
 
 ## License
 
-Licensed under either of
-
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
-
-at your option.
-
-### Contribution
+Licensed under either of [Apache-2.0](https://github.com/sergii-ziborov/radiochron/blob/main/LICENSE-APACHE)
+or [MIT](https://github.com/sergii-ziborov/radiochron/blob/main/LICENSE-MIT), at
+your option.
 
 Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in the work by you, as defined in the Apache-2.0 license, shall be

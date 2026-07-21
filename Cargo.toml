@@ -1,19 +1,9 @@
-# RadioChron is two crates, not one, because they have different audiences.
-#
-#   radiochron      — the library. Collectors and 802.11 analysis. What an IoT
-#                      agent, a CLI, an exporter or a WASM analyser imports.
-#   radiochron-mcp  — the Model Context Protocol server built on it. A product,
-#                      not a library.
-#
-# They live in one repository on purpose: the server is a thin shell over the
-# library and the two move together, so separate repos would only buy manual
-# version coordination on every release.
-
-[workspace]
-resolver = "2"
-members = ["crates/radiochron", "crates/radiochron-mcp"]
-
-[workspace.package]
+[package]
+name = "radiochron"
+description = "Wi-Fi diagnostics library: native WLAN collectors and 802.11 beacon analysis. No shell-outs, runtime code generation, or build toolchain beyond rustup."
+keywords = ["wifi", "wlan", "802-11", "diagnostics", "network"]
+categories = ["network-programming", "os::windows-apis"]
+readme = "README.md"
 version = "0.2.0"
 edition = "2021"
 rust-version = "1.78"
@@ -21,10 +11,24 @@ authors = ["Sergii Ziborov"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/sergii-ziborov/radiochron"
 
-[workspace.dependencies]
+[dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"
+
+# Capabilities are separately selectable because an embedded target should not
+# compile what it will never call. A sensor that only needs association state
+# and signal strength can enable `status` alone.
+[features]
+default = ["status", "scan", "analyze", "sample", "history", "record"]
+status = []
+scan = ["status"]
+analyze = ["scan"]
+sample = ["status"]
+history = []
+# The sink, JSONL rotation and change detector stay portable. The live Recorder
+# loop is compiled only when the target is Windows and `status` is also enabled.
+record = []
 
 [profile.release]
 lto = "thin"

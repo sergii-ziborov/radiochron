@@ -1,4 +1,4 @@
-name: CI
+name: Core CI
 
 on:
   push:
@@ -7,86 +7,35 @@ on:
   pull_request:
     branches: [main]
 
-env:
-  CARGO_TERM_COLOR: always
-  RADIOCHRON_GIT_SHA: ${{ github.sha }}
-
 permissions:
   contents: read
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
-  build:
+  windows-gnu:
     runs-on: windows-latest
-    permissions:
-      contents: read
-      id-token: write
-      attestations: write
     steps:
       - uses: actions/checkout@v5
-
-      # Build on the GNU toolchain, matching a developer machine that has no
-      # Visual C++ build tools. windows-latest ships MSVC, but relying on it
-      # would let an MSVC-only regression slip through unnoticed.
-      - name: Use the GNU toolchain
+      - name: Use the self-contained GNU toolchain
         run: |
           rustup toolchain install stable-x86_64-pc-windows-gnu --component clippy,rustfmt
           rustup default stable-x86_64-pc-windows-gnu
-          rustup show
-
       - uses: Swatinem/rust-cache@v2
-
-      - name: Format
-        run: cargo fmt --check
-
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
       - name: Feature matrix
         shell: pwsh
         run: |
-          cargo clippy -p radiochron --no-default-features -- -D warnings
+          cargo clippy --no-default-features -- -D warnings
           $features = @('status', 'scan', 'analyze', 'sample', 'history', 'record')
           foreach ($feature in $features) {
-            cargo clippy -p radiochron --no-default-features --features $feature -- -D warnings
+            cargo clippy --no-default-features --features $feature -- -D warnings
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
-
-      # CI runners have no WLAN adapter, so only the hardware-independent tests
-      # run here: the 802.11 IE parser, the JSON-RPC layer and the ABI layout
-      # assertions. Live collector behaviour is verified on real hardware.
-      - name: Test
-        run: cargo test --workspace
-
-      - name: Release build
-        run: cargo build --release
-
-      - name: Verify release provenance and npm tarball
-        shell: pwsh
-        run: |
-          $info = target/release/radiochron.exe --build-info | ConvertFrom-Json
-          if ($info.git_sha -ne '${{ github.sha }}') { throw 'binary commit does not match workflow commit' }
-          node npm/prepare.js
-          npm pack ./npm --dry-run
-
-      - name: Generate checksum and dependency metadata
-        shell: pwsh
-        run: |
-          (Get-FileHash target/release/radiochron.exe -Algorithm SHA256).Hash.ToLower() + '  radiochron.exe' | Set-Content target/release/radiochron.exe.sha256
-          cargo metadata --locked --format-version 1 | Set-Content target/release/cargo-metadata.json
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: radiochron-windows
-          path: |
-            target/release/radiochron.exe
-            target/release/radiochron.exe.sha256
-            target/release/cargo-metadata.json
-
-      - name: Attest tagged binary provenance
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/attest-build-provenance@v2
-        with:
-          subject-path: target/release/radiochron.exe
+      - run: cargo test
+      - run: cargo package --locked
 
   msrv:
     runs-on: windows-latest
@@ -97,7 +46,7 @@ jobs:
           rustup toolchain install 1.78.0-x86_64-pc-windows-gnu
           rustup default 1.78.0-x86_64-pc-windows-gnu
       - uses: Swatinem/rust-cache@v2
-      - run: cargo check --workspace --all-targets
+      - run: cargo check --all-targets
 
   windows-msvc:
     runs-on: windows-latest
@@ -107,8 +56,8 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
 
   portable-core:
     runs-on: ubuntu-latest
@@ -118,9 +67,9 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy -p radiochron --no-default-features -- -D warnings
-      - run: cargo clippy -p radiochron --no-default-features --features record -- -D warnings
-      - run: cargo test -p radiochron --no-default-features --features record
+      - run: cargo clippy --no-default-features -- -D warnings
+      - run: cargo clippy --no-default-features --features record -- -D warnings
+      - run: cargo test --no-default-features --features record
 
   coverage:
     runs-on: windows-latest
@@ -131,8 +80,8 @@ jobs:
           components: llvm-tools-preview
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
-      - run: cargo llvm-cov --workspace --lcov --output-path lcov.info
+      - run: cargo llvm-cov --lcov --output-path lcov.info
       - uses: actions/upload-artifact@v4
         with:
-          name: radiochron-coverage
+          name: radiochron-core-coverage
           path: lcov.info
