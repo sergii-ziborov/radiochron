@@ -27,8 +27,9 @@ surfaces:
 | [`radiochron`](https://github.com/sergii-ziborov/radiochron) | this portable Rust engine |
 | [`radiochron-agent`](https://github.com/sergii-ziborov/radiochron-agent) | Linux/Windows/macOS daemon with offline spool, connectivity checks and MQTT/OTLP/Prometheus export |
 | [`radiochron-fleet`](https://github.com/sergii-ziborov/radiochron-fleet) | enrollment, profiles, alarms and signed configuration/OTA rollouts |
-| [`radiochron-mcp`](https://github.com/sergii-ziborov/radiochron-mcp) | Windows MCP server built on the engine |
-| [`radiochron-js`](https://github.com/sergii-ziborov/radiochron-js) | npm launcher that ships the prebuilt MCP binary |
+| [`radiochron-mcp`](https://github.com/sergii-ziborov/radiochron-mcp) | separate pure-Rust MCP server built directly on the engine |
+| [`radiochron-js`](https://github.com/sergii-ziborov/radiochron-js) | standalone Node/npm application library over this engine |
+| [`radiochron-electron`](https://github.com/sergii-ziborov/radiochron-electron) | separate Windows/macOS UI consuming `radiochron-js` |
 | [`radiochron-site`](https://github.com/sergii-ziborov/radiochron-site) | source for [radiochron.com](https://radiochron.com) |
 
 ## Why no toolchain
@@ -184,7 +185,7 @@ lease, and Linux corroborates active systemd-networkd/NetworkManager leases.
 Unknown remains a first-class result when Linux has neither lease provenance
 nor an explicit active static profile; absence of a lease is never guessed to
 mean static configuration. TLS stays transport-pluggable so core gains no TLS
-dependency; `radiochron-agent` supplies the rustls verifier.
+dependency; `radiochron-agent` supplies a system-TLS verifier.
 
 ## Platform support
 
