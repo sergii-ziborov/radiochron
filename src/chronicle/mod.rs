@@ -134,7 +134,7 @@ impl Entry {
             device_id: identity.device_id.clone(),
             boot_id: identity.boot_id.clone(),
             sequence,
-            event_id: format!("{device_component}:{}:{sequence}", identity.boot_id),
+            event_id: event_id(device_component, &identity.boot_id, sequence),
             clock: ClockMetadata {
                 quality: identity.clock_quality,
                 source: "system_utc".to_string(),
@@ -230,6 +230,14 @@ fn native_boot_id() -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+fn event_id(device_id: &str, boot_id: &str, sequence: u64) -> String {
+    format!(
+        "radiochron:1:{}:{device_id}:{}:{boot_id}:{sequence}",
+        device_id.len(),
+        boot_id.len()
+    )
+}
+
 #[cfg(not(target_os = "linux"))]
 fn native_boot_id() -> Option<String> {
     None
@@ -271,7 +279,7 @@ mod tests {
             device_id: Some("device-7".into()),
             boot_id: "boot-a".into(),
             sequence: 42,
-            event_id: "device-7:boot-a:42".into(),
+            event_id: "radiochron:1:8:device-7:6:boot-a:42".into(),
             clock: ClockMetadata {
                 quality: ClockQuality::Synchronized,
                 source: "system_utc".into(),
@@ -292,6 +300,11 @@ mod tests {
         assert!(json.contains("\"from_bssid\":\"aa:aa:aa:aa:aa:aa\""));
         assert!(json.contains("\"epoch_seconds\":1784528615"));
         assert!(json.contains("\"schema_version\":1"));
-        assert!(json.contains("\"event_id\":\"device-7:boot-a:42\""));
+        assert!(json.contains("\"event_id\":\"radiochron:1:8:device-7:6:boot-a:42\""));
+    }
+
+    #[test]
+    fn event_ids_are_unambiguous_when_identity_contains_colons() {
+        assert_ne!(event_id("a:b", "c", 1), event_id("a", "b:c", 1));
     }
 }

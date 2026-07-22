@@ -313,7 +313,7 @@ mod tests {
         assert_eq!(recorder.step().unwrap(), 1);
         assert_eq!(recorder.next_sequence(), 8);
         let entry = &recorder.into_sink().0[0];
-        assert_eq!(entry.event_id, "device:boot:7");
+        assert_eq!(entry.event_id, "radiochron:1:6:device:4:boot:7");
         assert_eq!(entry.schema_version, super::super::CHRONICLE_SCHEMA_VERSION);
     }
 }
