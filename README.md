@@ -9,8 +9,8 @@ toolchain beyond a stock [`rustup`](https://rustup.rs)**.
 
 This crate is the engine. It knows nothing about MCP, JSON-RPC, or any
 transport — that lives in [`radiochron-mcp`](https://github.com/sergii-ziborov/radiochron-mcp),
-which depends on this one. An IoT agent, a CLI, a metrics exporter or a
-fleet-management service wants this crate and nothing else.
+which depends on this one. An IoT service, CLI or metrics exporter wants this
+crate and nothing else.
 
 ```toml
 [dependencies]
@@ -25,8 +25,6 @@ surfaces:
 | Repository | Purpose |
 |---|---|
 | [`radiochron`](https://github.com/sergii-ziborov/radiochron) | this portable Rust engine |
-| [`radiochron-agent`](https://github.com/sergii-ziborov/radiochron-agent) | Linux/Windows/macOS daemon with offline spool, connectivity checks and MQTT/OTLP/Prometheus export |
-| [`radiochron-fleet`](https://github.com/sergii-ziborov/radiochron-fleet) | enrollment, profiles, alarms and signed configuration/OTA rollouts |
 | [`radiochron-mcp`](https://github.com/sergii-ziborov/radiochron-mcp) | separate pure-Rust MCP server built directly on the engine |
 | [`radiochron-js`](https://github.com/sergii-ziborov/radiochron-js) | standalone Node/npm application library over this engine |
 | [`radiochron-electron`](https://github.com/sergii-ziborov/radiochron-electron) | separate Windows/macOS UI consuming `radiochron-js` |
@@ -166,7 +164,7 @@ records. Its types, sink
 [`chronicle::ChangeDetector`] are OS-free. [`chronicle::Collector`] makes the
 recorder portable too: the bundled collector uses WLAN API on Windows and
 nl80211 on Linux, while a modem or firmware agent can inject its own collector.
-Every entry carries a fleet-safe envelope (`schema_version`, `device_id`,
+Every entry carries a multi-device-safe envelope (`schema_version`, `device_id`,
 `boot_id`, `sequence`, clock quality and deterministic `event_id`). Heavy storage backends stay
 out of the tree: a SQLite sink is ~30 lines of `impl Sink` in your crate, which
 keeps *this* library building on stock `rustup` (`rusqlite`'s bundled C compile
@@ -185,7 +183,7 @@ lease, and Linux corroborates active systemd-networkd/NetworkManager leases.
 Unknown remains a first-class result when Linux has neither lease provenance
 nor an explicit active static profile; absence of a lease is never guessed to
 mean static configuration. TLS stays transport-pluggable so core gains no TLS
-dependency; `radiochron-agent` supplies a system-TLS verifier.
+dependency; downstream applications can supply a system-TLS verifier.
 
 ## Platform support
 
