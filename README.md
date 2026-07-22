@@ -62,8 +62,9 @@ radiochron = { version = "0.2", default-features = false, features = ["status"] 
 | `sample`  | Connection dynamics sampled over a window ([`wlan::sample`]) | `status` |
 | `history` | Reading the Windows WLAN AutoConfig event log ([`events`]) | — |
 | `record`  | Writing our own change log — the [`chronicle`] | — |
+| `connectivity` | Radio/auth/IP/DNS/TCP/Internet diagnosis ([`connectivity`]) | `status` |
 
-`default = ["status", "scan", "analyze", "sample", "history", "record"]`.
+`default = ["status", "scan", "analyze", "sample", "history", "record", "connectivity"]`.
 
 Reading history and writing it are separate on purpose: `history` reads what
 Windows already recorded; `record` keeps a chronicle of our own through a
@@ -158,24 +159,36 @@ Collector errors never impersonate disconnects; event-log tailing uses
 `EventRecordID` and records an explicit `HistoryGap` when a bounded poll loses
 records. Its types, sink
 ([`chronicle::Sink`], [`chronicle::JsonlSink`], [`chronicle::VecSink`]) and
-[`chronicle::ChangeDetector`] are OS-free — they are the part that ports to
-Linux, macOS and cellular collectors unchanged. Heavy storage backends stay
+[`chronicle::ChangeDetector`] are OS-free. [`chronicle::Collector`] makes the
+recorder portable too: the bundled collector uses WLAN API on Windows and
+nl80211 on Linux, while a modem or firmware agent can inject its own collector.
+Every entry carries a fleet-safe envelope (`schema_version`, `device_id`,
+`boot_id`, `sequence`, clock quality and deterministic `event_id`). Heavy storage backends stay
 out of the tree: a SQLite sink is ~30 lines of `impl Sink` in your crate, which
 keeps *this* library building on stock `rustup` (`rusqlite`'s bundled C compile
 does not).
+
+## Diagnose beyond association
+
+Association does not prove network access. [`connectivity::diagnose`] reports
+the chain separately: radio collector, AP authentication/association, usable
+IP configuration, DNS, application TCP and an explicit Internet endpoint.
+There are no built-in public probes; an isolated deployment can point every
+check at its own gateway, broker and health endpoint. The portable IP check
+cannot prove whether an address was assigned by DHCP or configured statically,
+so that limitation is included in the evidence instead of guessed away.
 
 ## Platform support
 
 |  | Windows | Linux | macOS |
 |---|---|---|---|
-| interface + association | **yes** | planned (nl80211) | planned (CoreWLAN) |
-| BSS list with raw IEs | **yes** | planned | limited by the public API |
+| interface + association | **yes** | **yes (nl80211)** | planned (CoreWLAN) |
+| BSS list with raw IEs | **yes** | **yes (nl80211)** | limited by the public API |
 | connection history | **yes** | no equivalent | no equivalent |
 
-Today the collectors are Windows-only; the analysis, chronicle and time modules
-are pure and portable. On non-Windows targets the OS-touching modules are
-compiled out, so the crate still builds — treat history and the radio
-collectors as optional capabilities, not assumptions.
+Windows and Linux collectors use native OS APIs without shelling out. History
+remains Windows-specific because Linux has no equivalent WLAN AutoConfig event
+log; the portable chronicle is the durable history on IoT devices.
 
 - **MSRV:** Rust 1.78
 - **Edition:** 2021

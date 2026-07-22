@@ -7,11 +7,10 @@
 //!
 //! # Design
 //!
-//! Collectors reach the operating system through hand-written FFI with the DLL
-//! resolved at run time, rather than through a binding crate. On Windows that
-//! means `wlanapi.dll` and `wevtapi.dll` directly: no PowerShell, no runtime C#
-//! compilation, no import library, and no build toolchain beyond a stock
-//! `rustup`.
+//! Collectors reach the operating system through hand-written native APIs. On
+//! Windows that means dynamically resolved `wlanapi.dll` and `wevtapi.dll`; on
+//! Linux it means Generic Netlink/nl80211. Neither backend shells out or needs
+//! a C build step beyond a stock `rustup` installation.
 //!
 //! Analysis is deliberately separated from collection. [`wlan::analyze`],
 //! [`events::detect`], [`wlan::bss::parse_information_elements`] and [`time`]
@@ -23,8 +22,8 @@
 //!
 //! | | Windows | Linux | macOS |
 //! |---|---|---|---|
-//! | interface + association | yes | planned (nl80211) | planned (CoreWLAN) |
-//! | BSS list with raw IEs | yes | planned | limited by the public API |
+//! | interface + association | yes | yes (nl80211) | planned (CoreWLAN) |
+//! | BSS list with raw IEs | yes | yes (nl80211) | limited by the public API |
 //! | connection history | yes | no equivalent | no equivalent |
 //!
 //! Connection history depends on the WLAN AutoConfig event log, which has no
@@ -41,15 +40,20 @@
 //!
 //! `status` (association state) · `scan` (BSS list + IE parsing) · `analyze`
 //! (findings) · `sample` (dynamics over a window) · `history` (reading the OS
-//! event log) · `record` (writing our own — the [`chronicle`]).
+//! event log) · `record` (writing our own — the [`chronicle`]) · `connectivity`
+//! (radio-to-Internet diagnosis with caller-supplied targets).
 //!
 //! Reading history and writing it are deliberately separate features: `history`
 //! reads what Windows already recorded, while `record` keeps a chronicle of our
 //! own through a pluggable [`chronicle::Sink`] — which is what history will
 //! mean on platforms whose OS keeps no log. The chronicle's types, sink and
-//! change detector are OS-free; only the recorder loop touches a collector.
+//! change detector and generic recorder are OS-free; only the selected
+//! collector touches an operating-system API.
 
 pub mod time;
+
+#[cfg(all(any(windows, target_os = "linux"), feature = "connectivity"))]
+pub mod connectivity;
 
 #[cfg(feature = "record")]
 pub mod chronicle;
@@ -60,5 +64,5 @@ mod dll;
 #[cfg(all(windows, feature = "history"))]
 pub mod events;
 
-#[cfg(all(windows, feature = "status"))]
+#[cfg(all(any(windows, target_os = "linux"), feature = "status"))]
 pub mod wlan;

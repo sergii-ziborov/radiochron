@@ -2,7 +2,7 @@
 name = "radiochron"
 description = "Wi-Fi diagnostics library: native WLAN collectors and 802.11 beacon analysis. No shell-outs, runtime code generation, or build toolchain beyond rustup."
 keywords = ["wifi", "wlan", "802-11", "diagnostics", "network"]
-categories = ["network-programming", "os::windows-apis"]
+categories = ["network-programming", "os"]
 readme = "README.md"
 version = "0.2.0"
 edition = "2021"
@@ -20,15 +20,17 @@ anyhow = "1"
 # compile what it will never call. A sensor that only needs association state
 # and signal strength can enable `status` alone.
 [features]
-default = ["status", "scan", "analyze", "sample", "history", "record"]
+default = ["status", "scan", "analyze", "sample", "history", "record", "connectivity"]
 status = []
 scan = ["status"]
 analyze = ["scan"]
 sample = ["status"]
 history = []
-# The sink, JSONL rotation and change detector stay portable. The live Recorder
-# loop is compiled only when the target is Windows and `status` is also enabled.
+# The sink, JSONL rotation, change detector and generic Collector stay portable.
+# Native live collectors are available on Windows and Linux with `status`.
 record = []
+# End-to-end reachability diagnostics. Targets are always caller-supplied.
+connectivity = ["status"]
 
 [profile.release]
 lto = "thin"

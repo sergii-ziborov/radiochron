@@ -191,14 +191,18 @@ mod tests {
     }
 
     fn entry(n: usize) -> Entry {
-        Entry {
-            epoch_seconds: n as i64,
-            time: format!("t{n}"),
-            interface_guid: None,
-            kind: EntryKind::Disconnected {
+        Entry::stamped(
+            &crate::chronicle::ChronicleIdentity {
+                device_id: Some("test-device".into()),
+                boot_id: "test-boot".into(),
+                clock_quality: crate::chronicle::ClockQuality::Synchronized,
+            },
+            n as u64,
+            None,
+            EntryKind::Disconnected {
                 last_bssid: Some(format!("aa:bb:cc:dd:ee:{n:02x}")),
             },
-        }
+        )
     }
 
     #[test]

@@ -14,9 +14,9 @@
 //! - [`ChangeDetector`] — pure state machine turning a stream of connection
 //!   observations into entries. No OS calls, so it is testable without a radio
 //!   and portable to collectors that do not exist yet.
-//! - `Recorder` (Windows, `status` feature) — the loop that feeds the detector
-//!   from live polls and, when the `history` feature is present, tails the WLAN
-//!   event log for reason codes.
+//! - [`Collector`] / [`Recorder`] — portable collection contract and loop. The
+//!   bundled adapter uses WLAN API on Windows and nl80211 on Linux; Windows can
+//!   additionally tail the WLAN event log for reason codes.
 //!
 //! # Why a module and not a `radiochron-history` crate
 //!
@@ -30,23 +30,72 @@
 mod detect;
 mod jsonl;
 
-#[cfg(all(windows, feature = "status"))]
 mod recorder;
 
 use std::collections::BTreeMap;
 use std::io;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::OnceLock;
+use std::time::Instant;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub use detect::{ChangeDetector, Observation};
 pub use jsonl::{read_recent_jsonl, JsonlRead, JsonlSink, RotationPolicy};
 
-#[cfg(all(windows, feature = "status"))]
-pub use recorder::{Recorder, RecorderOptions};
+#[cfg(all(any(windows, target_os = "linux"), feature = "status"))]
+pub use recorder::NativeCollector;
+pub use recorder::{
+    Collector, CollectorEvent, CollectorFailure, CollectorSample, Recorder, RecorderOptions,
+};
+
+/// Current wire/storage schema for [`Entry`].
+pub const CHRONICLE_SCHEMA_VERSION: u16 = 1;
+
+/// How trustworthy the wall clock was when an event was stamped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClockQuality {
+    Unknown,
+    Synchronized,
+    Unsynchronized,
+}
+
+/// Clock provenance carried by every entry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClockMetadata {
+    pub quality: ClockQuality,
+    pub source: String,
+    /// Process-monotonic time. Useful for ordering when wall time jumps.
+    pub monotonic_ms: u64,
+}
+
+/// Stable identity for one recorder process or device boot.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChronicleIdentity {
+    pub device_id: Option<String>,
+    pub boot_id: String,
+    pub clock_quality: ClockQuality,
+}
+
+impl Default for ChronicleIdentity {
+    fn default() -> Self {
+        process_identity().clone()
+    }
+}
 
 /// One recorded observation.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Entry {
+    pub schema_version: u16,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device_id: Option<String>,
+    pub boot_id: String,
+    /// Monotonic within one `(device_id, boot_id)` stream.
+    pub sequence: u64,
+    /// Deduplication key derived from the stream identity.
+    pub event_id: String,
+    pub clock: ClockMetadata,
     /// Seconds since the Unix epoch, stamped at write time.
     pub epoch_seconds: i64,
     /// The same instant as RFC 3339 UTC, for humans grepping the file.
@@ -66,8 +115,31 @@ impl Entry {
     }
 
     pub fn now_for_interface(interface_guid: Option<String>, kind: EntryKind) -> Self {
+        let sequence = PROCESS_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        Self::stamped(process_identity(), sequence, interface_guid, kind)
+    }
+
+    /// Stamp using a caller-owned identity and sequence. Recorders use this so
+    /// an offline spool can resume sequence numbers after a restart.
+    pub fn stamped(
+        identity: &ChronicleIdentity,
+        sequence: u64,
+        interface_guid: Option<String>,
+        kind: EntryKind,
+    ) -> Self {
         let epoch_seconds = crate::time::now_epoch_seconds();
+        let device_component = identity.device_id.as_deref().unwrap_or("anonymous");
         Self {
+            schema_version: CHRONICLE_SCHEMA_VERSION,
+            device_id: identity.device_id.clone(),
+            boot_id: identity.boot_id.clone(),
+            sequence,
+            event_id: format!("{device_component}:{}:{sequence}", identity.boot_id),
+            clock: ClockMetadata {
+                quality: identity.clock_quality,
+                source: "system_utc".to_string(),
+                monotonic_ms: process_started().elapsed().as_millis() as u64,
+            },
             epoch_seconds,
             time: crate::time::format_epoch(epoch_seconds),
             interface_guid,
@@ -78,7 +150,7 @@ impl Entry {
 
 /// What happened. Serialised with a `kind` tag so a JSONL consumer can filter
 /// with a substring match before parsing.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum EntryKind {
     /// The interface associated (or the recorder started while associated).
@@ -119,6 +191,48 @@ pub enum EntryKind {
         after_record_id: u64,
         before_record_id: u64,
     },
+    /// End-to-end state beyond association, collected on explicit targets.
+    #[cfg(feature = "connectivity")]
+    Connectivity {
+        report: Box<crate::connectivity::ConnectivityReport>,
+    },
+}
+
+static PROCESS_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+
+fn process_started() -> &'static Instant {
+    static STARTED: OnceLock<Instant> = OnceLock::new();
+    STARTED.get_or_init(Instant::now)
+}
+
+fn process_identity() -> &'static ChronicleIdentity {
+    static IDENTITY: OnceLock<ChronicleIdentity> = OnceLock::new();
+    IDENTITY.get_or_init(|| ChronicleIdentity {
+        device_id: std::env::var("RADIOCHRON_DEVICE_ID")
+            .ok()
+            .filter(|value| !value.trim().is_empty()),
+        boot_id: native_boot_id().unwrap_or_else(|| {
+            format!(
+                "process-{}-{}",
+                std::process::id(),
+                crate::time::now_epoch_seconds()
+            )
+        }),
+        clock_quality: ClockQuality::Unknown,
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn native_boot_id() -> Option<String> {
+    std::fs::read_to_string("/proc/sys/kernel/random/boot_id")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn native_boot_id() -> Option<String> {
+    None
 }
 
 /// Where chronicle entries go.
@@ -153,6 +267,16 @@ mod tests {
     #[test]
     fn entries_serialise_with_a_kind_tag() {
         let entry = Entry {
+            schema_version: CHRONICLE_SCHEMA_VERSION,
+            device_id: Some("device-7".into()),
+            boot_id: "boot-a".into(),
+            sequence: 42,
+            event_id: "device-7:boot-a:42".into(),
+            clock: ClockMetadata {
+                quality: ClockQuality::Synchronized,
+                source: "system_utc".into(),
+                monotonic_ms: 100,
+            },
             epoch_seconds: 1_784_528_615,
             time: "2026-07-20T06:23:35Z".into(),
             interface_guid: Some("guid".into()),
@@ -167,5 +291,7 @@ mod tests {
         assert!(json.contains("\"kind\":\"roamed\""), "{json}");
         assert!(json.contains("\"from_bssid\":\"aa:aa:aa:aa:aa:aa\""));
         assert!(json.contains("\"epoch_seconds\":1784528615"));
+        assert!(json.contains("\"schema_version\":1"));
+        assert!(json.contains("\"event_id\":\"device-7:boot-a:42\""));
     }
 }

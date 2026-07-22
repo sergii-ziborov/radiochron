@@ -132,6 +132,8 @@ mod tests {
                 EntryKind::CollectorError { .. } => "collector_error",
                 EntryKind::CollectorRecovered { .. } => "collector_recovered",
                 EntryKind::HistoryGap { .. } => "history_gap",
+                #[cfg(feature = "connectivity")]
+                EntryKind::Connectivity { .. } => "connectivity",
             })
             .collect()
     }

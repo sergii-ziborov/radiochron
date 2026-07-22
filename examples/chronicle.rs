@@ -6,7 +6,7 @@
 //! That is the point: the chronicle records change, not polls. Toggle Wi-Fi
 //! mid-run to watch disconnect/reconnect entries appear.
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 fn main() -> anyhow::Result<()> {
     use radiochron::chronicle::{JsonlSink, Recorder, RecorderOptions, RotationPolicy};
     use std::time::Duration;
@@ -20,6 +20,7 @@ fn main() -> anyhow::Result<()> {
         RecorderOptions {
             interval: Duration::from_secs(2),
             signal_threshold_db: 6,
+            ..RecorderOptions::default()
         },
     );
 
@@ -34,7 +35,7 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 fn main() {
-    eprintln!("The recorder loop currently has collectors only on Windows.");
+    eprintln!("The native recorder currently supports Windows and Linux.");
 }
