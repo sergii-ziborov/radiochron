@@ -282,7 +282,7 @@ fn security_label(entry: &BssEntry) -> String {
 ///
 /// 6 GHz uses its own numbering (channel 1 is centred at 5955 MHz), which is why
 /// it cannot share the 5 GHz formula.
-#[cfg(any(target_os = "linux", feature = "scan"))]
+#[cfg_attr(all(windows, not(feature = "scan")), allow(dead_code))]
 pub(crate) fn band_and_channel(center_khz: u32) -> (&'static str, Option<u16>) {
     let mhz = center_khz / 1000;
 
@@ -1083,7 +1083,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(windows)]
+    #[cfg(all(windows, feature = "scan"))]
     fn rates_decode_and_drop_the_basic_flag() {
         // 0x8016 == basic-rate flag | 22 units => 11 Mbps; 0x0018 => 12 Mbps.
         let rates = decode_rates(&[0x8016, 0x0018, 0, 0], 4);
@@ -1206,7 +1206,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(windows)]
+    #[cfg(all(windows, feature = "scan"))]
     fn ie_range_must_stay_inside_the_native_allocation() {
         let allocation = 1000usize;
         let entry = 1100usize;

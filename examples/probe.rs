@@ -1,12 +1,12 @@
 //! Proof of the "no C#, no PowerShell" thesis.
 //!
 //! Reads the current connection and the nearby BSS list using only hand-written
-//! FFI into `wlanapi.dll`. No child process is spawned, no .NET is loaded, no
-//! code is generated at run time.
+//! native calls (`wlanapi.dll` on Windows, nl80211 on Linux). No child process
+//! is spawned and no code is generated at run time.
 //!
 //! Run:  cargo run --example probe
 
-#[cfg(windows)]
+#[cfg(all(any(windows, target_os = "linux"), feature = "scan"))]
 fn main() -> anyhow::Result<()> {
     use radiochron::wlan;
 
@@ -62,7 +62,7 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[cfg(not(windows))]
-fn main() -> anyhow::Result<()> {
-    anyhow::bail!("RadioChron requires Windows (it talks to wlanapi.dll).")
+#[cfg(not(all(any(windows, target_os = "linux"), feature = "scan")))]
+fn main() {
+    eprintln!("The probe requires Windows/Linux and the `scan` feature.");
 }
