@@ -209,6 +209,14 @@ local-first, has no telemetry, and transmits nothing off the machine. Only run
 scans against networks you own or are authorized to test. It is not a packet
 sniffer, a geolocation system, or offensive Wi-Fi tooling.
 
+## crates.io release
+
+The crate release is isolated from the npm, MCP, Electron, agent, and website
+repositories. A matching `v<crate-version>` tag runs formatting, clippy, tests,
+and `cargo publish --dry-run` before publishing with the protected `crates-io`
+GitHub environment and its `CARGO_REGISTRY_TOKEN` secret. The workflow fails
+closed if the tag, manifest version, or credential is missing.
+
 ## License
 
 Licensed under either of [Apache-2.0](https://github.com/sergii-ziborov/radiochron/blob/main/LICENSE-APACHE)
