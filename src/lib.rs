@@ -9,8 +9,8 @@
 //!
 //! Collectors reach the operating system through hand-written native APIs. On
 //! Windows that means dynamically resolved `wlanapi.dll` and `wevtapi.dll`; on
-//! Linux it means Generic Netlink/nl80211. Neither backend shells out or needs
-//! a C build step beyond a stock `rustup` installation.
+//! Linux it means Generic Netlink/nl80211; on macOS it means CoreWLAN. None of
+//! the backends shells out or needs a C build step beyond stock `rustup`.
 //!
 //! Analysis is deliberately separated from collection. [`wlan::analyze`],
 //! [`events::detect`], [`wlan::bss::parse_information_elements`] and [`time`]
@@ -22,8 +22,8 @@
 //!
 //! | | Windows | Linux | macOS |
 //! |---|---|---|---|
-//! | interface + association | yes | yes (nl80211) | planned (CoreWLAN) |
-//! | BSS list with raw IEs | yes | yes (nl80211) | limited by the public API |
+//! | interface + association | yes | yes (nl80211) | yes (CoreWLAN) |
+//! | BSS list with raw IEs | yes | yes (nl80211) | yes (CoreWLAN) |
 //! | connection history | yes | no equivalent | no equivalent |
 //!
 //! Connection history depends on the WLAN AutoConfig event log, which has no
@@ -52,7 +52,10 @@
 
 pub mod time;
 
-#[cfg(all(any(windows, target_os = "linux"), feature = "connectivity"))]
+#[cfg(all(
+    any(windows, target_os = "linux", target_os = "macos"),
+    feature = "connectivity"
+))]
 pub mod connectivity;
 
 #[cfg(feature = "record")]
@@ -64,5 +67,8 @@ mod dll;
 #[cfg(all(windows, feature = "history"))]
 pub mod events;
 
-#[cfg(all(any(windows, target_os = "linux"), feature = "status"))]
+#[cfg(all(
+    any(windows, target_os = "linux", target_os = "macos"),
+    feature = "status"
+))]
 pub mod wlan;

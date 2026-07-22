@@ -81,6 +81,10 @@ pub struct BssInterfaceError {
 pub use super::linux::{
     bss_list, bss_list_detailed, last_refresh_age_seconds, request_scan, scan_and_wait,
 };
+#[cfg(all(target_os = "macos", feature = "scan"))]
+pub use super::macos::{
+    bss_list, bss_list_detailed, last_refresh_age_seconds, request_scan, scan_and_wait,
+};
 
 #[derive(Clone, Copy)]
 #[cfg(all(windows, feature = "scan"))]
@@ -282,7 +286,7 @@ fn security_label(entry: &BssEntry) -> String {
 ///
 /// 6 GHz uses its own numbering (channel 1 is centred at 5955 MHz), which is why
 /// it cannot share the 5 GHz formula.
-#[cfg_attr(all(windows, not(feature = "scan")), allow(dead_code))]
+#[cfg_attr(not(feature = "scan"), allow(dead_code))]
 pub(crate) fn band_and_channel(center_khz: u32) -> (&'static str, Option<u16>) {
     let mhz = center_khz / 1000;
 

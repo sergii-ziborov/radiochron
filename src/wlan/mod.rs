@@ -1,7 +1,8 @@
 //! Native Wi-Fi collectors with a platform-neutral data model.
 //!
 //! Windows uses `wlanapi.dll`; Linux talks to the kernel's `nl80211` generic
-//! netlink family directly. Neither backend shells out or requires a C build.
+//! netlink family directly; macOS uses CoreWLAN. No backend shells out or
+//! requires a C build.
 
 use serde::Serialize;
 
@@ -14,6 +15,8 @@ pub mod sample;
 
 #[cfg(target_os = "linux")]
 mod linux;
+#[cfg(target_os = "macos")]
+mod macos;
 #[cfg(windows)]
 pub mod sys;
 #[cfg(windows)]
@@ -21,6 +24,8 @@ mod windows;
 
 #[cfg(target_os = "linux")]
 pub use linux::wifi_status;
+#[cfg(target_os = "macos")]
+pub use macos::wifi_status;
 #[cfg(windows)]
 pub use windows::wifi_status;
 #[cfg(all(windows, feature = "scan"))]
@@ -31,7 +36,8 @@ pub(crate) use windows::{
 /// One operating-system Wi-Fi interface.
 #[derive(Debug, Clone, Serialize)]
 pub struct WlanInterface {
-    /// Stable platform identifier: Windows GUID or Linux interface index.
+    /// Stable platform identifier: Windows GUID, Linux interface index, or
+    /// macOS BSD interface name.
     pub guid: String,
     pub description: String,
     pub state: String,
@@ -61,6 +67,7 @@ pub struct WifiStatus {
     pub connection_error: Option<String>,
 }
 
+#[cfg(any(windows, target_os = "linux"))]
 pub(crate) fn mac_to_string(mac: &[u8; 6]) -> String {
     mac.iter()
         .map(|byte| format!("{byte:02x}"))
@@ -68,7 +75,7 @@ pub(crate) fn mac_to_string(mac: &[u8; 6]) -> String {
         .join(":")
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub(crate) fn quality_from_rssi(rssi_dbm: i32) -> u32 {
     ((rssi_dbm.clamp(-100, -50) + 100) * 2) as u32
 }
@@ -78,6 +85,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(any(windows, target_os = "linux"))]
     fn common_mac_format_is_stable() {
         assert_eq!(
             mac_to_string(&[0xa4, 0x2b, 0x8c, 0x00, 0x1f, 0xe0]),
@@ -86,7 +94,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     fn linux_dbm_quality_uses_the_windows_scale() {
         assert_eq!(quality_from_rssi(-100), 0);
         assert_eq!(quality_from_rssi(-75), 50);

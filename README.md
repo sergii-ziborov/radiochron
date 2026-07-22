@@ -25,15 +25,17 @@ surfaces:
 | Repository | Purpose |
 |---|---|
 | [`radiochron`](https://github.com/sergii-ziborov/radiochron) | this portable Rust engine |
-| [`radiochron-agent`](https://github.com/sergii-ziborov/radiochron-agent) | Linux/Windows daemon with offline spool, connectivity checks and MQTT/OTLP/Prometheus export |
+| [`radiochron-agent`](https://github.com/sergii-ziborov/radiochron-agent) | Linux/Windows/macOS daemon with offline spool, connectivity checks and MQTT/OTLP/Prometheus export |
+| [`radiochron-fleet`](https://github.com/sergii-ziborov/radiochron-fleet) | enrollment, profiles, alarms and signed configuration/OTA rollouts |
 | [`radiochron-mcp`](https://github.com/sergii-ziborov/radiochron-mcp) | Windows MCP server built on the engine |
 | [`radiochron-js`](https://github.com/sergii-ziborov/radiochron-js) | npm launcher that ships the prebuilt MCP binary |
 | [`radiochron-site`](https://github.com/sergii-ziborov/radiochron-site) | source for [radiochron.com](https://radiochron.com) |
 
 ## Why no toolchain
 
-Collectors reach the OS through hand-written FFI with the DLL resolved at run
-time via `LoadLibraryExW` restricted to `System32`, rather than through a binding crate. The `windows`
+Collectors reach the OS through hand-written FFI. Windows DLLs are resolved at
+run time via `LoadLibraryExW` restricted to `System32`; Linux talks directly to
+nl80211; macOS uses the public CoreWLAN and SystemConfiguration frameworks. The `windows`
 crate would drag in `windows-link`/`raw-dylib`, which needs mingw's `dlltool`
 on the GNU target or the multi-gigabyte Visual C++ build tools plus the Windows
 SDK on MSVC. Instead, the eight `wlanapi.dll` and four `wevtapi.dll` entry
@@ -172,22 +174,27 @@ does not).
 ## Diagnose beyond association
 
 Association does not prove network access. [`connectivity::diagnose`] reports
-the chain separately: radio collector, AP authentication/association, usable
-IP configuration, DNS, application TCP and an explicit Internet endpoint.
-There are no built-in public probes; an isolated deployment can point every
-check at its own gateway, broker and health endpoint. The portable IP check
-cannot prove whether an address was assigned by DHCP or configured statically,
-so that limitation is included in the evidence instead of guessed away.
+the chain separately: radio, AP authentication/association, IP assignment,
+gateway, DNS, application TCP, captive-portal interception, TLS certificate
+validation, repeated-connect loss/jitter and an explicit Internet endpoint.
+There are no built-in public probes; an isolated deployment points every check
+at its own gateway, broker and health endpoint. Windows reads the native
+`DhcpEnabled` flag, macOS reads the active SystemConfiguration service and
+lease, and Linux corroborates active systemd-networkd/NetworkManager leases.
+Unknown remains a first-class result when Linux has neither lease provenance
+nor an explicit active static profile; absence of a lease is never guessed to
+mean static configuration. TLS stays transport-pluggable so core gains no TLS
+dependency; `radiochron-agent` supplies the rustls verifier.
 
 ## Platform support
 
 |  | Windows | Linux | macOS |
 |---|---|---|---|
-| interface + association | **yes** | **yes (nl80211)** | planned (CoreWLAN) |
-| BSS list with raw IEs | **yes** | **yes (nl80211)** | limited by the public API |
+| interface + association | **yes** | **yes (nl80211)** | **yes (CoreWLAN)** |
+| BSS list with raw IEs | **yes** | **yes (nl80211)** | **yes (CoreWLAN)** |
 | connection history | **yes** | no equivalent | no equivalent |
 
-Windows and Linux collectors use native OS APIs without shelling out. History
+Windows, Linux and macOS collectors use native OS APIs without shelling out. History
 remains Windows-specific because Linux has no equivalent WLAN AutoConfig event
 log; the portable chronicle is the durable history on IoT devices.
 

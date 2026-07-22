@@ -74,6 +74,24 @@ jobs:
       - run: cargo clippy --no-default-features --features record -- -D warnings
       - run: cargo test --no-default-features --features record
 
+  macos:
+    strategy:
+      matrix:
+        os: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+      - run: cargo clippy --no-default-features -- -D warnings
+      - run: cargo clippy --no-default-features --features status -- -D warnings
+      - run: cargo clippy --no-default-features --features scan -- -D warnings
+      - run: cargo clippy --no-default-features --features connectivity -- -D warnings
+
   coverage:
     runs-on: windows-latest
     steps:
