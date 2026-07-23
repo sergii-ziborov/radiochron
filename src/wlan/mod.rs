@@ -4,29 +4,36 @@
 //! netlink family directly; macOS uses CoreWLAN. No backend shells out or
 //! requires a C build.
 
+use alloc::string::String;
+#[cfg(all(feature = "status", any(windows, target_os = "linux")))]
+use alloc::{format, vec::Vec};
 use serde::Serialize;
 
-#[cfg(feature = "analyze")]
+#[cfg(any(feature = "analyze", feature = "embedded"))]
 pub mod analyze;
-#[cfg(feature = "status")]
+#[cfg(any(
+    feature = "scan",
+    feature = "embedded",
+    all(feature = "status", target_os = "linux")
+))]
 pub mod bss;
 #[cfg(feature = "sample")]
 pub mod sample;
 
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "status", target_os = "linux"))]
 mod linux;
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "status", target_os = "macos"))]
 mod macos;
-#[cfg(windows)]
+#[cfg(all(feature = "status", windows))]
 pub mod sys;
-#[cfg(windows)]
+#[cfg(all(feature = "status", windows))]
 mod windows;
 
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "status", target_os = "linux"))]
 pub use linux::wifi_status;
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "status", target_os = "macos"))]
 pub use macos::wifi_status;
-#[cfg(windows)]
+#[cfg(all(feature = "status", windows))]
 pub use windows::wifi_status;
 #[cfg(all(windows, feature = "scan"))]
 pub(crate) use windows::{
@@ -67,7 +74,7 @@ pub struct WifiStatus {
     pub connection_error: Option<String>,
 }
 
-#[cfg(any(windows, target_os = "linux"))]
+#[cfg(all(feature = "status", any(windows, target_os = "linux")))]
 pub(crate) fn mac_to_string(mac: &[u8; 6]) -> String {
     mac.iter()
         .map(|byte| format!("{byte:02x}"))
@@ -75,12 +82,15 @@ pub(crate) fn mac_to_string(mac: &[u8; 6]) -> String {
         .join(":")
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-pub(crate) fn quality_from_rssi(rssi_dbm: i32) -> u32 {
+/// Convert dBm into the conventional 0..=100 link-quality scale.
+///
+/// Values at or below -100 dBm map to 0; values at or above -50 dBm map to
+/// 100. Firmware adapters can use the same normalization as hosted collectors.
+pub fn quality_from_rssi(rssi_dbm: i32) -> u32 {
     ((rssi_dbm.clamp(-100, -50) + 100) * 2) as u32
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "status"))]
 mod tests {
     use super::*;
 

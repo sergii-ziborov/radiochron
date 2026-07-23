@@ -14,7 +14,7 @@ crate and nothing else.
 
 ```toml
 [dependencies]
-radiochron = "0.2"
+radiochron = "0.3"
 ```
 
 ## Repository family
@@ -43,35 +43,119 @@ points are declared by hand with a handful of `#[repr(C)]` structs.
 The result: **three direct dependencies** — `serde`, `serde_json`, `anyhow` —
 for a 13-crate tree including everything transitive, and a build that needs
 nothing but `rustup` (the self-sufficient GNU toolchain works with no Visual
-Studio installed). On an embedded target that is the difference between adding
-a dependency and rebuilding the image.
+Studio installed). A bare-metal build does not activate `anyhow` or any hosted
+collector.
 
 ## Selecting capabilities
 
-Features are granular so an embedded target compiles only what it calls. A
-sensor that only needs association state and link strength takes `status` and
-nothing else:
+Features are granular so a hosted sensor that only needs association state and
+link strength takes `status` and nothing else:
 
 ```toml
-radiochron = { version = "0.2", default-features = false, features = ["status"] }
+radiochron = { version = "0.3", default-features = false, features = ["status"] }
 ```
 
 | Feature | Enables | Depends on |
 |---|---|---|
-| `status`  | Interface enumeration + current-connection attributes ([`wlan::wifi_status`]) | — |
+| `std` | Hosted runtime used by OS, clock, filesystem and network integrations | — |
+| `embedded` | `no_std + alloc` firmware adapter, WLAN models, IE parser, findings, chronicle and metrics | — |
+| `status`  | Interface enumeration + current-connection attributes ([`wlan::wifi_status`]) | `std` |
 | `scan`    | Nearby BSS list with raw 802.11 IE parsing ([`wlan::bss`]) | `status` |
 | `analyze` | The findings engine ([`wlan::analyze`]) | `scan` |
 | `sample`  | Connection dynamics sampled over a window ([`wlan::sample`]) | `status` |
-| `history` | Reading the Windows WLAN AutoConfig event log ([`events`]) | — |
-| `record`  | Writing our own change log — the [`chronicle`] | — |
+| `history` | Reading the Windows WLAN AutoConfig event log ([`events`]) | `std` |
+| `record`  | Writing our own change log — the [`chronicle`] | `std` |
 | `connectivity` | Radio/auth/IP/DNS/TCP/Internet diagnosis ([`connectivity`]) | `status` |
 
-`default = ["status", "scan", "analyze", "sample", "history", "record", "connectivity"]`.
+`default` enables `std` and every hosted capability. `embedded` is deliberately
+opt-in and does not enable an operating-system collector.
 
 Reading history and writing it are separate on purpose: `history` reads what
 Windows already recorded; `record` keeps a chronicle of our own through a
 pluggable [`chronicle::Sink`] — which is what "history" will mean on platforms
 whose OS keeps no such log.
+
+## Source architecture
+
+Public modules are thin facades over focused internal components. WLAN keeps
+models, IE parsing, scan lifecycle and platform collectors separate; Linux
+keeps Generic Netlink socket I/O separate from wire encoding; connectivity
+separates orchestration, probes and platform IP discovery; embedded Chronicle
+separates schema, metrics, change detection and recording. Public paths remain
+stable through facade re-exports.
+
+Every Rust source file is limited to 300 lines. The integration test
+`tests/source_layout.rs` enforces the limit so new platform code must extend an
+existing architectural seam or introduce a focused module rather than rebuild
+a monolith.
+
+## Microcontrollers (`no_std + alloc`)
+
+RadioChron now builds for bare-metal targets such as
+`thumbv7em-none-eabihf`. The final firmware must provide a global allocator;
+RadioChron uses [`alloc`](https://doc.rust-lang.org/stable/alloc/) for SSIDs,
+BSS lists and structured findings, but it does not use `std`, threads, files,
+sockets or an OS collector:
+
+```toml
+radiochron = { version = "0.3", default-features = false, features = ["embedded"] }
+```
+
+Implement [`embedded::Collector`] over the callbacks exposed by ESP-IDF,
+Zephyr, Embassy or the radio vendor's HAL. Append observations into the supplied
+buffers; [`embedded::Snapshot`] reuses their capacity between polls. The
+[`embedded::bss_entry`] helper turns the common firmware scan fields and raw IE
+bytes into a complete analyzable entry.
+
+```rust
+use radiochron::embedded::{Collector, Snapshot};
+use radiochron::wlan::{WifiStatus, bss::BssEntry};
+
+fn poll<C: Collector>(wifi: &mut C, snapshot: &mut Snapshot) -> Result<(), C::Error> {
+    snapshot.refresh(wifi)?;
+    let report = snapshot.analyze();
+    // Publish report.findings through the firmware's own transport.
+    Ok(())
+}
+```
+
+See [`examples/embedded.rs`](examples/embedded.rs) for a complete adapter. This
+is intended for ESP32-class and Cortex-M systems with a heap. A fixed-capacity,
+heapless profile for very small MCUs is not claimed yet.
+
+### ESP-IDF adapter
+
+[`radiochron-esp-idf`](adapters/esp-idf) directly implements the embedded
+collector for the Rust `esp-idf-svc` `EspWifi` and `BlockingWifi<EspWifi>` types:
+
+```rust,ignore
+use radiochron::embedded::Snapshot;
+use radiochron_esp_idf::EspIdfCollector;
+
+let mut collector = EspIdfCollector::new(wifi);
+let mut snapshot = Snapshot::new();
+snapshot.refresh(&mut collector)?;
+let report = snapshot.analyze();
+```
+
+ESP-IDF supplies SSID, BSSID, RSSI, channel, PHY and authentication mode. Its
+high-level scan API does not supply raw beacon IEs, so the adapter marks those
+bytes incomplete and never invents RSN/PMF data. The normalized authentication
+mode is retained separately for security findings.
+
+### Firmware chronicle and metrics
+
+[`embedded::chronicle::Chronicle`] is also `no_std`. Firmware supplies a
+monotonic [`Clock`] and a [`Sink`] backed by RAM, NVS, flash or its own offline
+spool. The recorder writes only association, disconnect, roam and signal
+changes with `schema_version`, device/boot identity, sequence and deterministic
+event ID.
+
+Its heartbeat metrics include expected/connected time, connectivity uptime,
+association attempts, disconnect/roam counts, RSSI min/max/mean, disconnect
+reason, backend successes/failures and time-to-associate/IP/backend. Sleep can
+be excluded from the uptime denominator through `set_connectivity_expected`.
+See [`examples/embedded_chronicle.rs`](examples/embedded_chronicle.rs).
 
 ## Collect
 

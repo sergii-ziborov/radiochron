@@ -1,5 +1,7 @@
 # Rust build output
 /target
+/adapters/*/target
+/adapters/*/Cargo.lock
 
 # Runtime state
 /data

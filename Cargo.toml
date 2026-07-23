@@ -4,33 +4,49 @@ description = "Wi-Fi diagnostics library: native WLAN collectors and 802.11 beac
 keywords = ["wifi", "wlan", "802-11", "diagnostics", "network"]
 categories = ["network-programming", "os"]
 readme = "README.md"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 rust-version = "1.78"
 authors = ["Sergii Ziborov"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/sergii-ziborov/radiochron"
+exclude = ["adapters/"]
 
 [dependencies]
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-anyhow = "1"
+serde = { version = "1", default-features = false, features = ["alloc", "derive"] }
+serde_json = { version = "1", default-features = false, features = ["alloc"] }
+anyhow = { version = "1", default-features = false, optional = true }
 
 # Capabilities are separately selectable because an embedded target should not
 # compile what it will never call. A sensor that only needs association state
 # and signal strength can enable `status` alone.
 [features]
-default = ["status", "scan", "analyze", "sample", "history", "record", "connectivity"]
-status = []
+default = ["std", "status", "scan", "analyze", "sample", "history", "record", "connectivity"]
+# Hosted platforms keep their existing API. Bare-metal builds opt out of this
+# feature, so neither operating-system collectors nor filesystem/network code
+# enter the dependency graph.
+std = ["dep:anyhow", "anyhow/std", "serde/std", "serde_json/std"]
+# Portable data models, 802.11 IE parsing, findings and a firmware collector
+# contract. Requires an allocator supplied by the final firmware image.
+embedded = []
+status = ["std"]
 scan = ["status"]
 analyze = ["scan"]
 sample = ["status"]
-history = []
+history = ["std"]
 # The sink, JSONL rotation, change detector and generic Collector stay portable.
 # Native live collectors are available on Windows and Linux with `status`.
-record = []
+record = ["std"]
 # End-to-end reachability diagnostics. Targets are always caller-supplied.
 connectivity = ["status"]
+
+[[example]]
+name = "embedded"
+required-features = ["embedded"]
+
+[[example]]
+name = "embedded_chronicle"
+required-features = ["embedded"]
 
 [profile.release]
 lto = "thin"

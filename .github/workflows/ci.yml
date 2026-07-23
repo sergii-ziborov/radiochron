@@ -29,7 +29,7 @@ jobs:
         shell: pwsh
         run: |
           cargo clippy --no-default-features -- -D warnings
-          $features = @('status', 'scan', 'analyze', 'sample', 'history', 'record')
+          $features = @('std', 'embedded', 'status', 'scan', 'analyze', 'sample', 'history', 'record')
           foreach ($feature in $features) {
             cargo clippy --no-default-features --features $feature -- -D warnings
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -91,6 +91,56 @@ jobs:
       - run: cargo clippy --no-default-features --features status -- -D warnings
       - run: cargo clippy --no-default-features --features scan -- -D warnings
       - run: cargo clippy --no-default-features --features connectivity -- -D warnings
+
+  embedded:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+          targets: thumbv7em-none-eabihf
+      - uses: Swatinem/rust-cache@v2
+      - name: Bare-metal no_std build
+        run: cargo check --target thumbv7em-none-eabihf --no-default-features --features embedded
+      - name: Portable code lint
+        run: cargo clippy --no-default-features --features embedded -- -D warnings
+      - name: Embedded API docs
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --no-deps --no-default-features --features embedded
+      - name: Adapter, parser and analysis tests
+        run: cargo test --no-default-features --features std,embedded
+      - name: Embedded adapter example
+        run: cargo check --example embedded --no-default-features --features std,embedded
+      - name: ESP-IDF adapter host contract
+        run: |
+          cargo clippy --manifest-path adapters/esp-idf/Cargo.toml --all-targets -- -D warnings
+          cargo test --manifest-path adapters/esp-idf/Cargo.toml
+      - name: Inspect ESP-IDF adapter package
+        # Full verification becomes possible after radiochron 0.3.0 is on crates.io.
+        run: cargo package --manifest-path adapters/esp-idf/Cargo.toml --list
+
+  esp-idf:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      ESP_IDF_VERSION: v5.4.3
+      CRATE_CC_NO_DEFAULTS: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install ESP Rust toolchain
+        uses: esp-rs/xtensa-toolchain@v1.7.0
+        with:
+          default: true
+          buildtargets: esp32
+          ldproxy: true
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: adapters/esp-idf
+      - name: Compile native ESP-IDF adapter
+        working-directory: adapters/esp-idf
+        run: cargo check --target xtensa-esp32-espidf
 
   coverage:
     runs-on: windows-latest

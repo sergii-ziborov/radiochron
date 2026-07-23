@@ -1,0 +1,19 @@
+[package]
+name = "radiochron-esp-idf"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+description = "ESP-IDF Wi-Fi collector adapter for the RadioChron diagnostics core"
+license = "MIT"
+repository = "https://github.com/sergii-ziborov/radiochron"
+readme = "README.md"
+keywords = ["esp32", "esp-idf", "wifi", "diagnostics", "embedded"]
+categories = ["embedded", "network-programming"]
+
+[dependencies]
+radiochron = { version = "0.3.0", path = "../..", default-features = false, features = ["embedded"] }
+
+[target.'cfg(target_os = "espidf")'.dependencies]
+embedded-svc = { version = "0.29", default-features = false, features = ["std"] }
+enumset = { version = "1", default-features = false }
+esp-idf-svc = { version = "0.52.1", default-features = false, features = ["std"] }

@@ -5,8 +5,6 @@
 
 #![allow(clashing_extern_declarations)]
 
-use core::ffi::{c_char, c_void};
-
 #[cfg(feature = "scan")]
 use std::sync::atomic::{AtomicI64, Ordering};
 #[cfg(feature = "scan")]
@@ -19,57 +17,16 @@ use super::bss::{
 };
 use super::{quality_from_rssi, CurrentConnection, WifiStatus, WlanInterface};
 
-type Id = *mut c_void;
-type Sel = *mut c_void;
+mod mapping;
+mod objc;
 
-#[link(name = "objc")]
-extern "C" {
-    fn objc_getClass(name: *const c_char) -> Id;
-    fn sel_registerName(name: *const c_char) -> Sel;
-    fn objc_autoreleasePoolPush() -> Id;
-    fn objc_autoreleasePoolPop(pool: Id);
-
-    #[link_name = "objc_msgSend"]
-    fn send_id(receiver: Id, selector: Sel) -> Id;
-    #[link_name = "objc_msgSend"]
-    fn send_id_index(receiver: Id, selector: Sel, index: usize) -> Id;
-    #[link_name = "objc_msgSend"]
-    #[cfg(feature = "scan")]
-    fn send_scan(receiver: Id, selector: Sel, name: Id, error: *mut Id) -> Id;
-    #[link_name = "objc_msgSend"]
-    fn send_bool(receiver: Id, selector: Sel) -> bool;
-    #[link_name = "objc_msgSend"]
-    fn send_bool_id(receiver: Id, selector: Sel, value: Id) -> bool;
-    #[link_name = "objc_msgSend"]
-    fn send_isize(receiver: Id, selector: Sel) -> isize;
-    #[link_name = "objc_msgSend"]
-    fn send_usize(receiver: Id, selector: Sel) -> usize;
-    #[link_name = "objc_msgSend"]
-    fn send_ptr(receiver: Id, selector: Sel) -> *const c_void;
-}
-
-// Merely linking the framework loads the Objective-C classes used above.
-#[link(name = "CoreWLAN", kind = "framework")]
-extern "C" {}
-#[link(name = "Foundation", kind = "framework")]
-extern "C" {}
+#[cfg(feature = "scan")]
+use mapping::channel_frequency_khz;
+use mapping::phy_type;
+use objc::*;
 
 #[cfg(feature = "scan")]
 static LAST_REFRESH_EPOCH: AtomicI64 = AtomicI64::new(0);
-
-struct AutoreleasePool(Id);
-
-impl AutoreleasePool {
-    fn new() -> Self {
-        Self(unsafe { objc_autoreleasePoolPush() })
-    }
-}
-
-impl Drop for AutoreleasePool {
-    fn drop(&mut self) {
-        unsafe { objc_autoreleasePoolPop(self.0) }
-    }
-}
 
 pub fn wifi_status() -> anyhow::Result<Vec<WifiStatus>> {
     let _pool = AutoreleasePool::new();
@@ -309,6 +266,7 @@ fn network_entry(network: Id, interface_name: &str) -> BssEntry {
             .unwrap_or(0),
         in_reg_domain: true,
         capability_information: 0,
+        reported_security: None,
         timestamp: 0,
         host_timestamp: 0,
         rates_mbps: Vec::new(),
@@ -318,115 +276,5 @@ fn network_entry(network: Id, interface_name: &str) -> BssEntry {
 }
 
 #[cfg(feature = "scan")]
-fn channel_frequency_khz(channel: u16, band: isize) -> u32 {
-    match (band, channel) {
-        (1, 14) => 2_484_000,
-        (1, value) => (2_407 + u32::from(value) * 5) * 1_000,
-        (2, value) => (5_000 + u32::from(value) * 5) * 1_000,
-        (3, value) => (5_950 + u32::from(value) * 5) * 1_000,
-        (_, value) if value <= 14 => (2_407 + u32::from(value) * 5) * 1_000,
-        (_, value) => (5_000 + u32::from(value) * 5) * 1_000,
-    }
-}
-
-fn collection_objects(collection: Id) -> Vec<Id> {
-    // NSSet (scan results) offers allObjects; NSArray simply does not. Asking
-    // an object whether it responds avoids assuming which collection Apple
-    // returns on a particular SDK revision.
-    let responds = unsafe {
-        let selector_object = selector(b"allObjects\0");
-        send_bool_id(
-            collection,
-            selector(b"respondsToSelector:\0"),
-            // SEL and object pointers have the same machine representation.
-            selector_object,
-        )
-    };
-    let array = if responds {
-        unsafe { send_id(collection, selector(b"allObjects\0")) }
-    } else {
-        collection
-    };
-    if array.is_null() {
-        return Vec::new();
-    }
-    let count = unsafe { send_usize(array, selector(b"count\0")) };
-    (0..count)
-        .filter_map(|index| {
-            let object = unsafe { send_id_index(array, selector(b"objectAtIndex:\0"), index) };
-            (!object.is_null()).then_some(object)
-        })
-        .collect()
-}
-
-fn string_property(object: Id, name: &'static [u8]) -> Option<String> {
-    if object.is_null() {
-        return None;
-    }
-    let string = unsafe { send_id(object, selector(name)) };
-    if string.is_null() {
-        return None;
-    }
-    let bytes = unsafe { send_ptr(string, selector(b"UTF8String\0")) }.cast::<c_char>();
-    if bytes.is_null() {
-        return None;
-    }
-    let value = unsafe { std::ffi::CStr::from_ptr(bytes) }
-        .to_string_lossy()
-        .into_owned();
-    (!value.is_empty()).then_some(value)
-}
-
-#[cfg(feature = "scan")]
-fn data_property(object: Id, name: &'static [u8]) -> Option<Vec<u8>> {
-    let data = unsafe { send_id(object, selector(name)) };
-    if data.is_null() {
-        return None;
-    }
-    let len = unsafe { send_usize(data, selector(b"length\0")) };
-    let bytes = unsafe { send_ptr(data, selector(b"bytes\0")) }.cast::<u8>();
-    if len == 0 {
-        return Some(Vec::new());
-    }
-    if bytes.is_null() {
-        return None;
-    }
-    Some(unsafe { std::slice::from_raw_parts(bytes, len) }.to_vec())
-}
-
-fn bool_property(object: Id, name: &'static [u8]) -> bool {
-    unsafe { send_bool(object, selector(name)) }
-}
-
-fn integer_property(object: Id, name: &'static [u8]) -> isize {
-    unsafe { send_isize(object, selector(name)) }
-}
-
-fn selector(name: &'static [u8]) -> Sel {
-    debug_assert_eq!(name.last(), Some(&0));
-    unsafe { sel_registerName(name.as_ptr().cast()) }
-}
-
-fn phy_type(mode: isize) -> String {
-    match mode {
-        1 => "802.11a",
-        2 => "802.11b",
-        3 => "802.11g",
-        4 => "ht",
-        5 => "vht",
-        6 => "he",
-        7 => "eht",
-        _ => return format!("unknown_{mode}"),
-    }
-    .to_string()
-}
-
 #[cfg(test)]
-mod tests {
-    #[test]
-    fn apple_channel_frequency_mapping_covers_all_wifi_bands() {
-        assert_eq!(super::channel_frequency_khz(1, 1), 2_412_000);
-        assert_eq!(super::channel_frequency_khz(36, 2), 5_180_000);
-        assert_eq!(super::channel_frequency_khz(5, 3), 5_975_000);
-    }
-}
+mod tests;
